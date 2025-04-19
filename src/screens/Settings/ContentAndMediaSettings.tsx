@@ -5,7 +5,7 @@ import {type NativeStackScreenProps} from '@react-navigation/native-stack'
 import {type CommonNavigatorParams} from '#/lib/routes/types'
 import {logEvent} from '#/lib/statsig/statsig'
 import {isNative} from '#/platform/detection'
-import {useAutoplayDisabled, useSetAutoplayDisabled} from '#/state/preferences'
+import {useAutoplayDisabled, useSetAutoplayDisabled, useVideoAutoplayDisabled, useSetVideoAutoplayDisabled} from '#/state/preferences'
 import {
   useInAppBrowser,
   useSetInAppBrowser,
@@ -35,6 +35,8 @@ export function ContentAndMediaSettingsScreen({}: Props) {
   const {_} = useLingui()
   const autoplayDisabledPref = useAutoplayDisabled()
   const setAutoplayDisabledPref = useSetAutoplayDisabled()
+  const videoAutoplayDisabledPref = useVideoAutoplayDisabled()
+  const setVideoAutoplayDisabledPref = useSetVideoAutoplayDisabled()
   const inAppBrowserPref = useInAppBrowser()
   const setUseInAppBrowser = useSetInAppBrowser()
   const {enabled: trendingEnabled} = useTrendingConfig()
@@ -111,6 +113,19 @@ export function ContentAndMediaSettingsScreen({}: Props) {
               </SettingsList.Item>
             </Toggle.Item>
           )}
+          <Toggle.Item
+            name="disable_video_autoplay"
+            label={_(msg`Autoplay videos`)}
+            value={!videoAutoplayDisabledPref}
+            onChange={value => setVideoAutoplayDisabledPref(!value)}>
+            <SettingsList.Item>
+              <SettingsList.ItemIcon icon={PlayIcon} />
+              <SettingsList.ItemText>
+                <Trans>Autoplay videos</Trans>
+              </SettingsList.ItemText>
+              <Toggle.Platform />
+            </SettingsList.Item>
+          </Toggle.Item>
           <Toggle.Item
             name="disable_autoplay"
             label={_(msg`Autoplay videos and GIFs`)}
