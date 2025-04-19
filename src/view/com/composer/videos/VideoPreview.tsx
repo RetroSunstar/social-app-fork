@@ -5,7 +5,7 @@ import {BlueskyVideoView} from '@haileyok/bluesky-video'
 
 import {CompressedVideo} from '#/lib/media/video/types'
 import {clamp} from '#/lib/numbers'
-import {useAutoplayDisabled} from '#/state/preferences'
+import {useAutoplayDisabled, useVideoAutoplayDisabled} from '#/state/preferences'
 import {ExternalEmbedRemoveBtn} from '#/view/com/composer/ExternalEmbedRemoveBtn'
 import {atoms as a, useTheme} from '#/alf'
 import {PlayButtonIcon} from '#/components/video/PlayButtonIcon'
@@ -24,6 +24,7 @@ export function VideoPreview({
 }) {
   const t = useTheme()
   const playerRef = React.useRef<BlueskyVideoView>(null)
+  const videoAutoplayDisabled = useVideoAutoplayDisabled()
   const autoplayDisabled = useAutoplayDisabled()
   let aspectRatio = asset.width / asset.height
 
@@ -50,14 +51,14 @@ export function VideoPreview({
       {isActivePost && (
         <BlueskyVideoView
           url={video.uri}
-          autoplay={!autoplayDisabled}
+          autoplay={!autoplayDisabled || !videoAutoplayDisabled}
           beginMuted={true}
           forceTakeover={true}
           ref={playerRef}
         />
       )}
       <ExternalEmbedRemoveBtn onRemove={clear} />
-      {autoplayDisabled && (
+      {autoplayDisabled || videoAutoplayDisabled && (
         <View style={[a.absolute, a.inset_0, a.justify_center, a.align_center]}>
           <PlayButtonIcon />
         </View>
