@@ -17,7 +17,7 @@ export {
   useRequireAltTextEnabled,
   useSetRequireAltTextEnabled,
 } from './alt-text-required'
-export {useAutoplayDisabled, useSetAutoplayDisabled} from './autoplay'
+export {useAutoplayDisabled, useSetAutoplayDisabled, useVideoAutoplayDisabled, useSetVideoAutoplayDisabled} from './autoplay'
 export {useHapticsDisabled, useSetHapticsDisabled} from './disable-haptics'
 export {
   useExternalEmbedsPrefs,
