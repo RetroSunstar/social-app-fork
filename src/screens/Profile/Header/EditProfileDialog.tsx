@@ -266,7 +266,6 @@ function DialogInner({
   return (
     <Dialog.ScrollableInner
       label={_(msg`Edit profile`)}
-      style={[a.overflow_hidden]}
       contentContainerStyle={[a.px_0, a.pt_0]}
       header={
         <Dialog.Header renderLeft={cancelButton} renderRight={saveButton}>
