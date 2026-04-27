@@ -4,7 +4,6 @@ import {
   type GestureResponderEvent,
   type PressableProps,
 } from 'react-native'
-import type React from 'react'
 
 import {type TextStyleProp, type ViewStyleProp} from '#/alf'
 import type * as Dialog from '#/components/Dialog'
@@ -43,7 +42,7 @@ export type TriggerProps = {
 }
 export type TriggerChildProps =
   | {
-      isNative: true
+      IS_NATIVE: true
       control: Dialog.DialogOuterProps['control']
       state: {
         /**
@@ -73,7 +72,7 @@ export type TriggerChildProps =
       }
     }
   | {
-      isNative: false
+      IS_NATIVE: false
       control: Dialog.DialogOuterProps['control']
       state: {
         hovered: boolean
@@ -107,6 +106,7 @@ export type ItemTextProps = React.PropsWithChildren<TextStyleProp & {}>
 export type ItemIconProps = React.PropsWithChildren<{
   icon: React.ComponentType<SVGIconProps>
   position?: 'left' | 'right'
+  fill?: (props: {disabled: boolean}) => string
 }>
 
 export type GroupProps = React.PropsWithChildren<ViewStyleProp & {}>

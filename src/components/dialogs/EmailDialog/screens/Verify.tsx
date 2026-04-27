@@ -1,7 +1,8 @@
 import {useReducer} from 'react'
 import {View} from 'react-native'
-import {msg, Trans} from '@lingui/macro'
+import {msg} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
 
 import {wait} from '#/lib/async/wait'
 import {useCleanError} from '#/lib/hooks/useCleanError'
@@ -176,7 +177,7 @@ export function Verify({config, showScreen}: ScreenProps<ScreenID.Verify>) {
         <View style={[a.gap_sm]}>
           <Text style={[a.text_xl, a.font_bold]}>
             <Span style={{top: 1}}>
-              <Check size="sm" fill={t.palette.positive_600} />
+              <Check size="sm" fill={t.palette.positive_500} />
             </Span>
             {'  '}
             <Trans>Email verification complete!</Trans>
@@ -202,7 +203,7 @@ export function Verify({config, showScreen}: ScreenProps<ScreenID.Verify>) {
             state.mutationStatus === 'success' ? (
               <>
                 <Span style={{top: 1}}>
-                  <Check size="sm" fill={t.palette.positive_600} />
+                  <Check size="sm" fill={t.palette.positive_500} />
                 </Span>
                 {'  '}
                 <Trans>Email sent!</Trans>

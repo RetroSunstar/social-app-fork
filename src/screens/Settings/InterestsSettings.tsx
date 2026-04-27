@@ -1,11 +1,17 @@
 import {useMemo, useState} from 'react'
 import {type TextStyle, View, type ViewStyle} from 'react-native'
-import {msg, Trans} from '@lingui/macro'
+import {msg} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
 import {type NativeStackScreenProps} from '@react-navigation/native-stack'
 import {useQueryClient} from '@tanstack/react-query'
 import debounce from 'lodash.debounce'
 
+import {
+  type Interest,
+  interests as allInterests,
+  useInterestsDisplayNames,
+} from '#/lib/interests'
 import {type CommonNavigatorParams} from '#/lib/routes/types'
 import {
   preferencesQueryKey,
@@ -13,17 +19,18 @@ import {
 } from '#/state/queries/preferences'
 import {type UsePreferencesQueryResponse} from '#/state/queries/preferences/types'
 import {createGetSuggestedFeedsQueryKey} from '#/state/queries/trending/useGetSuggestedFeedsQuery'
-import {createGetSuggestedUsersQueryKey} from '#/state/queries/trending/useGetSuggestedUsersQuery'
+import {createGetSuggestedUsersForDiscoverQueryKey} from '#/state/queries/trending/useGetSuggestedUsersForDiscoverQuery'
+import {createGetSuggestedUsersForExploreQueryKey} from '#/state/queries/trending/useGetSuggestedUsersForExploreQuery'
+import {createGetSuggestedUsersForSeeMoreQueryKey} from '#/state/queries/trending/useGetSuggestedUsersForSeeMoreQuery'
 import {createSuggestedStarterPacksQueryKey} from '#/state/queries/useSuggestedStarterPacksQuery'
 import {useAgent} from '#/state/session'
-import * as Toast from '#/view/com/util/Toast'
-import {useInterestsDisplayNames} from '#/screens/Onboarding/state'
 import {atoms as a, useGutters, useTheme} from '#/alf'
 import {Admonition} from '#/components/Admonition'
 import {Divider} from '#/components/Divider'
 import * as Toggle from '#/components/forms/Toggle'
 import * as Layout from '#/components/Layout'
 import {Loader} from '#/components/Loader'
+import * as Toast from '#/components/Toast'
 import {Text} from '#/components/Typography'
 
 type Props = NativeStackScreenProps<CommonNavigatorParams, 'InterestsSettings'>
@@ -115,7 +122,15 @@ function Inner({
         await Promise.all([
           qc.resetQueries({queryKey: createSuggestedStarterPacksQueryKey()}),
           qc.resetQueries({queryKey: createGetSuggestedFeedsQueryKey()}),
-          qc.resetQueries({queryKey: createGetSuggestedUsersQueryKey({})}),
+          qc.resetQueries({
+            queryKey: createGetSuggestedUsersForDiscoverQueryKey({}),
+          }),
+          qc.resetQueries({
+            queryKey: createGetSuggestedUsersForExploreQueryKey({}),
+          }),
+          qc.resetQueries({
+            queryKey: createGetSuggestedUsersForSeeMoreQueryKey({}),
+          }),
         ])
 
         Toast.show(
@@ -134,7 +149,9 @@ function Inner({
               context: 'toast',
             }),
           ),
-          'xmark',
+          {
+            type: 'error',
+          },
         )
       } finally {
         setIsSaving(false)
@@ -160,7 +177,7 @@ function Inner({
         onChange={onChangeInterests}
         label={_(msg`Select your interests from the options below`)}>
         <View style={[a.flex_row, a.flex_wrap, a.gap_sm]}>
-          {INTERESTS.map(interest => {
+          {allInterests.map(interest => {
             const name = interestsDisplayNames[interest]
             if (!name) return null
             return (
@@ -178,7 +195,7 @@ function Inner({
   )
 }
 
-export function InterestButton({interest}: {interest: string}) {
+export function InterestButton({interest}: {interest: Interest}) {
   const t = useTheme()
   const interestsDisplayNames = useInterestsDisplayNames()
   const ctx = Toggle.useItemContext()
@@ -230,29 +247,3 @@ export function InterestButton({interest}: {interest: string}) {
     </View>
   )
 }
-
-const INTERESTS = [
-  'animals',
-  'art',
-  'books',
-  'comedy',
-  'comics',
-  'culture',
-  'dev',
-  'education',
-  'food',
-  'gaming',
-  'journalism',
-  'movies',
-  'music',
-  'nature',
-  'news',
-  'pets',
-  'photography',
-  'politics',
-  'science',
-  'sports',
-  'tech',
-  'tv',
-  'writers',
-]

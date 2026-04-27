@@ -2,18 +2,18 @@ import {useCallback, useEffect, useMemo, useState} from 'react'
 import {View} from 'react-native'
 import {useAnimatedRef} from 'react-native-reanimated'
 import {type ChatBskyActorDefs, type ChatBskyConvoDefs} from '@atproto/api'
-import {msg, Trans} from '@lingui/macro'
+import {msg} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
 import {useFocusEffect, useIsFocused} from '@react-navigation/native'
 import {type NativeStackScreenProps} from '@react-navigation/native-stack'
 
-import {useAppState} from '#/lib/hooks/useAppState'
+import {useAppState} from '#/lib/appState'
 import {useInitialNumToRender} from '#/lib/hooks/useInitialNumToRender'
 import {useRequireEmailVerification} from '#/lib/hooks/useRequireEmailVerification'
 import {type MessagesTabNavigatorParams} from '#/lib/routes/types'
 import {cleanError} from '#/lib/strings/errors'
 import {logger} from '#/logger'
-import {isNative} from '#/platform/detection'
 import {listenSoftReset} from '#/state/events'
 import {MESSAGE_SCREEN_POLL_INTERVAL} from '#/state/messages/convo/const'
 import {useMessagesEventBus} from '#/state/messages/events'
@@ -29,7 +29,7 @@ import {Button, ButtonIcon, ButtonText} from '#/components/Button'
 import {type DialogControlProps, useDialogControl} from '#/components/Dialog'
 import {NewChat} from '#/components/dms/dialogs/NewChatDialog'
 import {useRefreshOnFocus} from '#/components/hooks/useRefreshOnFocus'
-import {ArrowRotateCounterClockwise_Stroke2_Corner0_Rounded as RetryIcon} from '#/components/icons/ArrowRotateCounterClockwise'
+import {ArrowRotateCounterClockwise_Stroke2_Corner0_Rounded as RetryIcon} from '#/components/icons/ArrowRotate'
 import {CircleInfo_Stroke2_Corner0_Rounded as CircleInfoIcon} from '#/components/icons/CircleInfo'
 import {Message_Stroke2_Corner0_Rounded as MessageIcon} from '#/components/icons/Message'
 import {PlusLarge_Stroke2_Corner0_Rounded as PlusIcon} from '#/components/icons/Plus'
@@ -38,6 +38,8 @@ import * as Layout from '#/components/Layout'
 import {Link} from '#/components/Link'
 import {ListFooter} from '#/components/Lists'
 import {Text} from '#/components/Typography'
+import {useAgeAssurance} from '#/ageAssurance'
+import {IS_NATIVE} from '#/env'
 import {ChatListItem} from './components/ChatListItem'
 import {InboxPreview} from './components/InboxPreview'
 
@@ -70,21 +72,24 @@ type Props = NativeStackScreenProps<MessagesTabNavigatorParams, 'Messages'>
 export function MessagesScreen(props: Props) {
   const {_} = useLingui()
   const aaCopy = useAgeAssuranceCopy()
+  const aa = useAgeAssurance()
 
   return (
     <AgeRestrictedScreen
       screenTitle={_(msg`Chats`)}
       infoText={aaCopy.chatsInfoText}
       rightHeaderSlot={
-        <Link
-          to="/messages/settings"
-          label={_(msg`Chat settings`)}
-          size="small"
-          color="secondary">
-          <ButtonText>
-            <Trans>Chat settings</Trans>
-          </ButtonText>
-        </Link>
+        aa.flags.chatDisabled ? null : (
+          <Link
+            to="/messages/settings"
+            label={_(msg`Chat settings`)}
+            size="small"
+            color="secondary">
+            <ButtonText>
+              <Trans>Chat settings</Trans>
+            </ButtonText>
+          </Link>
+        )
       }>
       <MessagesScreenInner {...props} />
     </AgeRestrictedScreen>
@@ -188,7 +193,11 @@ export function MessagesScreenInner({navigation, route}: Props) {
             ]
           : []),
         ...conversations.map(
-          convo => ({type: 'CONVERSATION', conversation: convo}) as const,
+          convo =>
+            ({
+              type: 'CONVERSATION',
+              conversation: convo,
+            }) as const,
         ),
       ] satisfies ListItem[]
     }
@@ -222,7 +231,7 @@ export function MessagesScreenInner({navigation, route}: Props) {
 
   const onSoftReset = useCallback(async () => {
     scrollElRef.current?.scrollToOffset({
-      animated: isNative,
+      animated: IS_NATIVE,
       offset: 0,
     })
     try {
@@ -237,7 +246,7 @@ export function MessagesScreenInner({navigation, route}: Props) {
     if (!isScreenFocused) {
       return
     }
-    return listenSoftReset(onSoftReset)
+    return listenSoftReset(() => void onSoftReset())
   }, [onSoftReset, isScreenFocused])
 
   // NOTE(APiligrim)
@@ -287,7 +296,7 @@ export function MessagesScreenInner({navigation, route}: Props) {
                       size="small"
                       color="secondary_inverted"
                       variant="solid"
-                      onPress={() => refetch()}>
+                      onPress={() => void refetch()}>
                       <ButtonText>
                         <Trans>Retry</Trans>
                       </ButtonText>
@@ -337,8 +346,8 @@ export function MessagesScreenInner({navigation, route}: Props) {
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         refreshing={isPTRing}
-        onRefresh={onRefresh}
-        onEndReached={onEndReached}
+        onRefresh={() => void onRefresh()}
+        onEndReached={() => void onEndReached()}
         ListFooterComponent={
           <ListFooter
             isFetchingNextPage={isFetchingNextPage}
@@ -348,7 +357,7 @@ export function MessagesScreenInner({navigation, route}: Props) {
             hasNextPage={hasNextPage}
           />
         }
-        onEndReachedThreshold={isNative ? 1.5 : 0}
+        onEndReachedThreshold={IS_NATIVE ? 1.5 : 0}
         initialNumToRender={initialNumToRender}
         windowSize={11}
         desktopFixedHeight

@@ -1,7 +1,7 @@
 import {useEffect} from 'react'
 import * as Notifications from 'expo-notifications'
 import {AtUri} from '@atproto/api'
-import {msg} from '@lingui/macro'
+import {msg} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
 import {CommonActions, useNavigation} from '@react-navigation/native'
 import {useQueryClient} from '@tanstack/react-query'
@@ -9,7 +9,6 @@ import {useQueryClient} from '@tanstack/react-query'
 import {useAccountSwitcher} from '#/lib/hooks/useAccountSwitcher'
 import {logger as notyLogger} from '#/lib/notifications/util'
 import {type NavigationProp} from '#/lib/routes/types'
-import {isAndroid, isIOS} from '#/platform/detection'
 import {useCurrentConvoId} from '#/state/messages/current-convo-id'
 import {RQKEY as RQKEY_NOTIFS} from '#/state/queries/notifications/feed'
 import {invalidateCachedUnreadPage} from '#/state/queries/notifications/unread'
@@ -17,6 +16,8 @@ import {truncateAndInvalidate} from '#/state/queries/util'
 import {useSession} from '#/state/session'
 import {useLoggedOutViewControls} from '#/state/shell/logged-out'
 import {useCloseAllActiveElements} from '#/state/util'
+import {useAnalytics} from '#/analytics'
+import {IS_ANDROID, IS_IOS} from '#/env'
 import {resetToTab} from '#/Navigation'
 import {router} from '#/routes'
 
@@ -28,6 +29,7 @@ export type NotificationReason =
   | 'reply'
   | 'quote'
   | 'chat-message'
+  | 'chat-reaction'
   | 'starterpack-joined'
   | 'like-via-repost'
   | 'repost-via-repost'
@@ -43,13 +45,19 @@ export type NotificationReason =
 export type NotificationPayload =
   | undefined
   | {
-      reason: Exclude<NotificationReason, 'chat-message'>
+      reason: Exclude<NotificationReason, 'chat-message' | 'chat-reaction'>
       uri: string
       subject: string
       recipientDid: string
     }
   | {
       reason: 'chat-message'
+      convoId: string
+      messageId: string
+      recipientDid: string
+    }
+  | {
+      reason: 'chat-reaction'
       convoId: string
       messageId: string
       recipientDid: string
@@ -75,6 +83,8 @@ let storedAccountSwitchPayload: NotificationPayload
 let lastHandledNotificationDateDedupe = 0
 
 export function useNotificationsHandler() {
+  const ax = useAnalytics()
+  const logger = ax.logger.useChild(ax.logger.Context.Notifications)
   const queryClient = useQueryClient()
   const {currentAccount, accounts} = useSession()
   const {onPressSwitchAccount} = useAccountSwitcher()
@@ -90,7 +100,7 @@ export function useNotificationsHandler() {
   // channels allow for the mute/unmute functionality we want for the background
   // handler.
   useEffect(() => {
-    if (!isAndroid) return
+    if (!IS_ANDROID) return
     // assign both chat notifications to a group
     // NOTE: I don't think that it will retroactively move them into the group
     // if the channels already exist. no big deal imo -sfn
@@ -189,8 +199,11 @@ export function useNotificationsHandler() {
     const handleNotification = (payload?: NotificationPayload) => {
       if (!payload) return
 
-      if (payload.reason === 'chat-message') {
-        notyLogger.debug(`useNotificationsHandler: handling chat message`, {
+      if (
+        payload.reason === 'chat-message' ||
+        payload.reason === 'chat-reaction'
+      ) {
+        logger.debug(`useNotificationsHandler: handling chat notification`, {
           payload,
         })
 
@@ -250,7 +263,7 @@ export function useNotificationsHandler() {
           const [screen, params] = router.matchPath(url)
           // @ts-expect-error router is not typed :/ -sfn
           navigation.navigate('HomeTab', {screen, params})
-          notyLogger.debug(`useNotificationsHandler: navigate`, {
+          logger.debug(`useNotificationsHandler: navigate`, {
             screen,
             params,
           })
@@ -264,10 +277,11 @@ export function useNotificationsHandler() {
 
         if (!payload) return DEFAULT_HANDLER_OPTIONS
 
-        notyLogger.debug('useNotificationsHandler: incoming', {e, payload})
+        logger.debug('useNotificationsHandler: incoming', {e, payload})
 
         if (
-          payload.reason === 'chat-message' &&
+          (payload.reason === 'chat-message' ||
+            payload.reason === 'chat-reaction') &&
           payload.recipientDid === currentAccount?.did
         ) {
           const shouldAlert = payload.convoId !== currentConvoId
@@ -290,7 +304,7 @@ export function useNotificationsHandler() {
         if (e.notification.date === lastHandledNotificationDateDedupe) return
         lastHandledNotificationDateDedupe = e.notification.date
 
-        notyLogger.debug('useNotificationsHandler: response received', {
+        logger.debug('useNotificationsHandler: response received', {
           actionIdentifier: e.actionIdentifier,
         })
 
@@ -301,15 +315,14 @@ export function useNotificationsHandler() {
         const payload = getNotificationPayload(e.notification)
 
         if (payload) {
-          notyLogger.debug(
+          logger.debug(
             'User pressed a notification, opening notifications tab',
             {},
           )
-          notyLogger.metric(
-            'notifications:openApp',
-            {reason: payload.reason, causedBoot: false},
-            {statsig: false},
-          )
+          ax.metric('notifications:openApp', {
+            reason: payload.reason,
+            causedBoot: false,
+          })
 
           invalidateCachedUnreadPage()
           truncateAndInvalidate(queryClient, RQKEY_NOTIFS('all'))
@@ -322,7 +335,7 @@ export function useNotificationsHandler() {
             truncateAndInvalidate(queryClient, RQKEY_NOTIFS('mentions'))
           }
 
-          notyLogger.debug('Notifications: handleNotification', {
+          logger.debug('Notifications: handleNotification', {
             content: e.notification.request.content,
             payload: payload,
           })
@@ -330,7 +343,7 @@ export function useNotificationsHandler() {
           handleNotification(payload)
           Notifications.dismissAllNotificationsAsync()
         } else {
-          notyLogger.error('useNotificationsHandler: received no payload', {
+          logger.error('useNotificationsHandler: received no payload', {
             identifier: e.notification.request.identifier,
           })
         }
@@ -339,7 +352,8 @@ export function useNotificationsHandler() {
     // Whenever there's a stored payload, that means we had to switch accounts before handling the notification.
     // Whenever currentAccount changes, we should try to handle it again.
     if (
-      storedAccountSwitchPayload?.reason === 'chat-message' &&
+      (storedAccountSwitchPayload?.reason === 'chat-message' ||
+        storedAccountSwitchPayload?.reason === 'chat-reaction') &&
       currentAccount?.did === storedAccountSwitchPayload.recipientDid
     ) {
       handleNotification(storedAccountSwitchPayload)
@@ -350,6 +364,8 @@ export function useNotificationsHandler() {
       responseReceivedListener.remove()
     }
   }, [
+    ax,
+    logger,
     queryClient,
     currentAccount,
     currentConvoId,
@@ -379,7 +395,7 @@ export function getNotificationPayload(
   }
 
   const payload = (
-    isIOS ? e.request.trigger.payload : e.request.content.data
+    IS_IOS ? e.request.trigger.payload : e.request.content.data
   ) as NotificationPayload
 
   if (payload && payload.reason) {
@@ -425,6 +441,7 @@ export function notificationToURL(payload: NotificationPayload): string | null {
       return `/profile/${urip.host}`
     }
     case 'chat-message':
+    case 'chat-reaction':
       // should be handled separately
       return null
     case 'verified':

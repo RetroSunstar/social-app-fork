@@ -1,8 +1,8 @@
-import React from 'react'
+import {useRef} from 'react'
 import {View} from 'react-native'
 import {Image} from 'expo-image'
 import {type ImagePickerAsset} from 'expo-image-picker'
-import {BlueskyVideoView} from '@haileyok/bluesky-video'
+import {BlueskyVideoView} from '@bsky.app/video'
 
 import {type CompressedVideo} from '#/lib/media/video/types'
 import {clamp} from '#/lib/numbers'
@@ -24,7 +24,7 @@ export function VideoPreview({
   clear: () => void
 }) {
   const t = useTheme()
-  const playerRef = React.useRef<BlueskyVideoView>(null)
+  const playerRef = useRef<BlueskyVideoView>(null)
   const autoplayDisabled = useAutoplayDisabled()
   let aspectRatio = asset.width / asset.height
 

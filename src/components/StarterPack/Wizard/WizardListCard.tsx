@@ -7,8 +7,9 @@ import {
   type ModerationOpts,
   type ModerationUI,
 } from '@atproto/api'
-import {msg, Trans} from '@lingui/macro'
+import {msg} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
 
 import {DISCOVER_FEED_URI, STARTER_PACK_MAX_SIZE} from '#/lib/constants'
 import {sanitizeDisplayName} from '#/lib/strings/display-names'
@@ -24,6 +25,7 @@ import {Button, ButtonText} from '#/components/Button'
 import * as Toggle from '#/components/forms/Toggle'
 import {Checkbox} from '#/components/forms/Toggle'
 import {Text} from '#/components/Typography'
+import {useAnalytics} from '#/analytics'
 import type * as bsky from '#/types/bsky'
 
 function WizardListCard({
@@ -129,6 +131,7 @@ export function WizardProfileCard({
   profile: bsky.profile.AnyProfileView
   moderationOpts: ModerationOpts
 }) {
+  const ax = useAnalytics()
   const {currentAccount} = useSession()
 
   // Determine the "main" profile for this starter pack - either targetDid or current account
@@ -150,8 +153,10 @@ export function WizardProfileCard({
     if (profile.did === targetProfileDid) return
 
     if (!included) {
+      ax.metric('starterPack:addUser', {})
       dispatch({type: 'AddProfile', profile})
     } else {
+      ax.metric('starterPack:removeUser', {})
       dispatch({type: 'RemoveProfile', profileDid: profile.did})
     }
   }

@@ -7,9 +7,14 @@
  */
 // Original code copied and simplified from the link below as the codebase is currently not maintained:
 // https://github.com/jobtoday/react-native-image-viewing
-
-import React, {useCallback, useEffect, useMemo, useState} from 'react'
-import {LayoutAnimation, PixelRatio, StyleSheet, View} from 'react-native'
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
+import {
+  LayoutAnimation,
+  PixelRatio,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import {SystemBars} from 'react-native-edge-to-edge'
 import {Gesture} from 'react-native-gesture-handler'
 import PagerView from 'react-native-pager-view'
@@ -18,7 +23,10 @@ import Animated, {
   cancelAnimation,
   interpolate,
   measure,
+  type MeasuredDimensions,
+  ReduceMotion,
   runOnJS,
+  runOnUI,
   type SharedValue,
   useAnimatedReaction,
   useAnimatedRef,
@@ -29,26 +37,26 @@ import Animated, {
   withSpring,
   type WithSpringConfig,
 } from 'react-native-reanimated'
-import {
-  SafeAreaView,
-  useSafeAreaFrame,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context'
+import {SafeAreaView} from 'react-native-safe-area-context'
 import * as ScreenOrientation from 'expo-screen-orientation'
 import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome'
-import {Trans} from '@lingui/macro'
+import {Trans} from '@lingui/react/macro'
 
 import {type Dimensions} from '#/lib/media/types'
 import {colors, s} from '#/lib/styles'
-import {isIOS} from '#/platform/detection'
 import {type Lightbox} from '#/state/lightbox'
 import {Button} from '#/view/com/util/forms/Button'
 import {Text} from '#/view/com/util/text/Text'
 import {ScrollView} from '#/view/com/util/Views'
 import {useTheme} from '#/alf'
 import {setSystemUITheme} from '#/alf/util/systemUI'
+import {IS_IOS} from '#/env'
 import {PlatformInfo} from '../../../../../modules/expo-bluesky-swiss-army'
-import {type ImageSource, type Transform} from './@types'
+import {
+  type ImageSource,
+  type LightboxTransforms,
+  type Transform,
+} from './@types'
 import ImageDefaultHeader from './components/ImageDefaultHeader'
 import ImageItem from './components/ImageItem/ImageItem'
 
@@ -58,25 +66,24 @@ const PORTRAIT_UP = ScreenOrientation.OrientationLock.PORTRAIT_UP
 const PIXEL_RATIO = PixelRatio.get()
 
 const SLOW_SPRING: WithSpringConfig = {
-  mass: isIOS ? 1.25 : 0.75,
+  mass: IS_IOS ? 1.25 : 0.75,
   damping: 300,
   stiffness: 800,
-  restDisplacementThreshold: 0.01,
+  restDisplacementThreshold: 0.001,
 }
 const FAST_SPRING: WithSpringConfig = {
-  mass: isIOS ? 1.25 : 0.75,
+  mass: IS_IOS ? 1.25 : 0.75,
   damping: 150,
   stiffness: 900,
-  restDisplacementThreshold: 0.01,
+  restDisplacementThreshold: 0.001,
 }
 
 function canAnimate(lightbox: Lightbox): boolean {
-  return (
-    !PlatformInfo.getIsReducedMotionEnabled() &&
-    lightbox.images.every(
-      img => img.thumbRect && (img.dimensions || img.thumbDimensions),
-    )
-  )
+  if (PlatformInfo.getIsReducedMotionEnabled()) {
+    return false
+  }
+  const img = lightbox.images[lightbox.index]
+  return !!img.thumbRect && !!(img.dimensions || img.thumbDimensions)
 }
 
 export default function ImageViewRoot({
@@ -97,15 +104,24 @@ export default function ImageViewRoot({
     'portrait',
   )
   const openProgress = useSharedValue(0)
+  const thumbRects = useSharedValue<Record<number, MeasuredDimensions | null>>(
+    {},
+  )
 
   if (!activeLightbox && nextLightbox) {
     setActiveLightbox(nextLightbox)
   }
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!nextLightbox) {
       return
     }
+
+    const initial: Record<number, MeasuredDimensions | null> = {}
+    nextLightbox.images.forEach((img, i) => {
+      initial[i] = img.thumbRect ?? null
+    })
+    thumbRects.set(initial)
 
     const isAnimated = canAnimate(nextLightbox)
 
@@ -123,13 +139,21 @@ export default function ImageViewRoot({
         )
       })
     }
-  }, [nextLightbox, openProgress])
+  }, [nextLightbox, openProgress, thumbRects])
+
+  const onFullyClosed = useCallback(() => {
+    setActiveLightbox(null)
+    runOnUI(() => {
+      'worklet'
+      thumbRects.set({})
+    })()
+  }, [thumbRects])
 
   useAnimatedReaction(
     () => openProgress.get() === 0,
     (isGone, wasGone) => {
       if (isGone && !wasGone) {
-        runOnJS(setActiveLightbox)(null)
+        runOnJS(onFullyClosed)()
       }
     },
   )
@@ -148,7 +172,7 @@ export default function ImageViewRoot({
     },
   )
 
-  const onFlyAway = React.useCallback(() => {
+  const onFlyAway = useCallback(() => {
     'worklet'
     openProgress.set(0)
     runOnJS(onRequestClose)()
@@ -182,6 +206,7 @@ export default function ImageViewRoot({
             onFlyAway={onFlyAway}
             safeAreaRef={ref}
             openProgress={openProgress}
+            thumbRects={thumbRects}
           />
         )}
       </Animated.View>
@@ -198,6 +223,7 @@ function ImageView({
   onFlyAway,
   safeAreaRef,
   openProgress,
+  thumbRects,
 }: {
   lightbox: Lightbox
   orientation: 'portrait' | 'landscape'
@@ -207,6 +233,7 @@ function ImageView({
   onFlyAway: () => void
   safeAreaRef: AnimatedRef<View>
   openProgress: SharedValue<number>
+  thumbRects: SharedValue<Record<number, MeasuredDimensions | null>>
 }) {
   const {images, index: initialImageIndex} = lightbox
   const isAnimated = useMemo(() => canAnimate(lightbox), [lightbox])
@@ -214,7 +241,7 @@ function ImageView({
   const [isDragging, setIsDragging] = useState(false)
   const [imageIndex, setImageIndex] = useState(initialImageIndex)
   const [showControls, setShowControls] = useState(true)
-  const [isAltExpanded, setAltExpanded] = React.useState(false)
+  const [isAltExpanded, setIsAltExpanded] = useState(false)
   const dismissSwipeTranslateY = useSharedValue(0)
   const isFlyingAway = useSharedValue(false)
 
@@ -247,7 +274,7 @@ function ImageView({
       )
       opacity -= dragProgress
     }
-    const factor = isIOS ? 100 : 50
+    const factor = IS_IOS ? 100 : 50
     return {
       opacity: Math.round(opacity * factor) / factor,
     }
@@ -284,6 +311,24 @@ function ImageView({
       ],
     }
   })
+
+  const handleRequestClose = useCallback(() => {
+    const activeRef = images[imageIndex]?.thumbRef
+    if (isAnimated && activeRef) {
+      runOnUI(() => {
+        'worklet'
+        const rect = measure(activeRef)
+        thumbRects.modify(rects => {
+          'worklet'
+          rects[imageIndex] = rect
+          return rects
+        })
+        runOnJS(onRequestClose)()
+      })()
+    } else {
+      onRequestClose()
+    }
+  }, [isAnimated, images, imageIndex, thumbRects, onRequestClose])
 
   const onTap = useCallback(() => {
     setShowControls(show => !show)
@@ -353,7 +398,7 @@ function ImageView({
               onTap={onTap}
               onZoom={onZoom}
               imageSrc={imageSrc}
-              onRequestClose={onRequestClose}
+              onRequestClose={handleRequestClose}
               isScrollViewBeingDragged={isDragging}
               showControls={showControls}
               safeAreaRef={safeAreaRef}
@@ -362,6 +407,8 @@ function ImageView({
               isActive={i === imageIndex}
               dismissSwipeTranslateY={dismissSwipeTranslateY}
               openProgress={openProgress}
+              thumbRects={thumbRects}
+              imageIndex={i}
             />
           </View>
         ))}
@@ -370,7 +417,7 @@ function ImageView({
         <Animated.View
           style={animatedHeaderStyle}
           renderToHardwareTextureAndroid>
-          <ImageDefaultHeader onRequestClose={onRequestClose} />
+          <ImageDefaultHeader onRequestClose={handleRequestClose} />
         </Animated.View>
         <Animated.View
           style={animatedFooterStyle}
@@ -379,7 +426,7 @@ function ImageView({
             images={images}
             index={imageIndex}
             isAltExpanded={isAltExpanded}
-            toggleAltExpanded={() => setAltExpanded(e => !e)}
+            toggleAltExpanded={() => setIsAltExpanded(e => !e)}
             onPressSave={onPressSave}
             onPressShare={onPressShare}
           />
@@ -402,6 +449,8 @@ function LightboxImage({
   safeAreaRef,
   openProgress,
   dismissSwipeTranslateY,
+  thumbRects,
+  imageIndex,
 }: {
   imageSrc: ImageSource
   onRequestClose: () => void
@@ -415,8 +464,10 @@ function LightboxImage({
   safeAreaRef: AnimatedRef<View>
   openProgress: SharedValue<number>
   dismissSwipeTranslateY: SharedValue<number>
+  thumbRects: SharedValue<Record<number, MeasuredDimensions | null>>
+  imageIndex: number
 }) {
-  const [fetchedDims, setFetchedDims] = React.useState<Dimensions | null>(null)
+  const [fetchedDims, setFetchedDims] = useState<Dimensions | null>(null)
   const dims = fetchedDims ?? imageSrc.dimensions ?? imageSrc.thumbDimensions
   let imageAspect: number | undefined
   if (dims) {
@@ -426,33 +477,29 @@ function LightboxImage({
     }
   }
 
-  const safeFrameDelayedForJSThreadOnly = useSafeAreaFrame()
-  const safeInsetsDelayedForJSThreadOnly = useSafeAreaInsets()
-  const measureSafeArea = React.useCallback(() => {
+  const {
+    width: widthDelayedForJSThreadOnly,
+    height: heightDelayedForJSThreadOnly,
+  } = useWindowDimensions()
+  const measureSafeArea = useCallback(() => {
     'worklet'
     let safeArea: Rect | null = measure(safeAreaRef)
     if (!safeArea) {
       if (_WORKLET) {
         console.error('Expected to always be able to measure safe area.')
       }
-      const frame = safeFrameDelayedForJSThreadOnly
-      const insets = safeInsetsDelayedForJSThreadOnly
       safeArea = {
-        x: frame.x + insets.left,
-        y: frame.y + insets.top,
-        width: frame.width - insets.left - insets.right,
-        height: frame.height - insets.top - insets.bottom,
+        x: 0,
+        y: 0,
+        width: widthDelayedForJSThreadOnly,
+        height: heightDelayedForJSThreadOnly,
       }
     }
     return safeArea
-  }, [
-    safeFrameDelayedForJSThreadOnly,
-    safeInsetsDelayedForJSThreadOnly,
-    safeAreaRef,
-  ])
+  }, [safeAreaRef, heightDelayedForJSThreadOnly, widthDelayedForJSThreadOnly])
 
-  const {thumbRect} = imageSrc
-  const transforms = useDerivedValue(() => {
+  const {thumbRect: thumbRectJS, thumbBorderRadius} = imageSrc
+  const transforms = useDerivedValue<LightboxTransforms>(() => {
     'worklet'
     const safeArea = measureSafeArea()
     const openProgressValue = openProgress.get()
@@ -463,23 +510,34 @@ function LightboxImage({
       return {
         isHidden: true,
         isResting: false,
+        borderRadius: 0,
         scaleAndMoveTransform: [],
         cropFrameTransform: [],
         cropContentTransform: [],
       }
     }
 
-    if (isActive && thumbRect && imageAspect && openProgressValue < 1) {
-      return interpolateTransform(
-        openProgressValue,
-        thumbRect,
-        safeArea,
-        imageAspect,
-      )
+    if (isActive && imageAspect && openProgressValue < 1) {
+      let thumbRect
+      if (_WORKLET) {
+        thumbRect = thumbRects.get()[imageIndex]
+      } else {
+        thumbRect = thumbRectJS
+      }
+      if (thumbRect) {
+        return interpolateTransform(
+          openProgressValue,
+          thumbRect,
+          safeArea,
+          imageAspect,
+          thumbBorderRadius,
+        )
+      }
     }
     return {
       isHidden: false,
       isResting: dismissTranslateY === 0,
+      borderRadius: 0,
       scaleAndMoveTransform: [{translateY: dismissTranslateY}],
       cropFrameTransform: [],
       cropContentTransform: [],
@@ -516,6 +574,7 @@ function LightboxImage({
             velocity: e.velocityY,
             velocityFactor: Math.max(3500 / Math.abs(e.velocityY), 1), // Speed up if it's too slow.
             deceleration: 1, // Danger! This relies on the reaction below stopping it.
+            reduceMotion: ReduceMotion.Never, // If this animation doesn't run, the image gets stuck - therefore override Reduce Motion
           })
         })
       } else {
@@ -524,6 +583,7 @@ function LightboxImage({
           return withSpring(0, {
             stiffness: 700,
             damping: 50,
+            reduceMotion: ReduceMotion.Never,
           })
         })
       }
@@ -563,7 +623,7 @@ function LightboxFooter({
   onPressShare: (uri: string) => void
 }) {
   const {alt: altText, uri} = images[index]
-  const isMomentumScrolling = React.useRef(false)
+  const isMomentumScrolling = useRef(false)
   return (
     <ScrollView
       style={styles.footerScrollView}
@@ -582,7 +642,7 @@ function LightboxFooter({
         {altText ? (
           <View accessibilityRole="button" style={styles.footerText}>
             <Text
-              style={[s.gray3]}
+              style={{color: colors.gray3}}
               numberOfLines={isAltExpanded ? undefined : 3}
               selectable
               onPress={() => {
@@ -595,7 +655,8 @@ function LightboxFooter({
                 })
                 toggleAltExpanded()
               }}
-              onLongPress={() => {}}>
+              onLongPress={() => {}}
+              emoji>
               {altText}
             </Text>
           </View>
@@ -682,7 +743,7 @@ const styles = StyleSheet.create({
     maxHeight: '100%',
   },
   footerText: {
-    paddingBottom: isIOS ? 20 : 16,
+    paddingBottom: IS_IOS ? 20 : 16,
   },
   footerBtns: {
     flexDirection: 'row',
@@ -718,10 +779,12 @@ function interpolateTransform(
   },
   safeArea: {width: number; height: number; x: number; y: number},
   imageAspect: number,
+  thumbBorderRadius?: number,
 ): {
   scaleAndMoveTransform: Transform
   cropFrameTransform: Transform
   cropContentTransform: Transform
+  borderRadius: number
   isResting: boolean
   isHidden: boolean
 } {
@@ -773,12 +836,23 @@ function interpolateTransform(
     [0, 1],
     [croppedFinalHeight / finalHeight, 1],
   )
+  // The border radius in the source thumbnail needs to be scaled to account
+  // for the crop frame and overall scale so it visually matches at progress=0.
+  const sourceBorderRadius = thumbBorderRadius ?? 0
+  const initialCropScaleX = croppedFinalWidth / finalWidth
+  const borderRadius = interpolate(
+    progress,
+    [0, 1],
+    [sourceBorderRadius / (initialScale * initialCropScaleX), 0],
+  )
+
   return {
     isHidden: false,
     isResting: progress === 1,
     scaleAndMoveTransform: [{translateX}, {translateY}, {scale}],
     cropFrameTransform: [{scaleX: cropScaleX}, {scaleY: cropScaleY}],
     cropContentTransform: [{scaleX: 1 / cropScaleX}, {scaleY: 1 / cropScaleY}],
+    borderRadius,
   }
 }
 

@@ -6,7 +6,7 @@ import Animated, {
   ZoomIn,
 } from 'react-native-reanimated'
 import * as Clipboard from 'expo-clipboard'
-import {Trans} from '@lingui/macro'
+import {Trans} from '@lingui/react/macro'
 
 import {atoms as a, useTheme} from '#/alf'
 import {Button, type ButtonProps} from '#/components/Button'
@@ -58,9 +58,9 @@ export function CopyButton({
           pointerEvents="none">
           <Text
             style={[
-              a.font_semi_bold,
+              a.font_medium,
               a.text_right,
-              a.text_md,
+              a.text_sm,
               t.atoms.text_contrast_high,
             ]}>
             <Trans>Copied!</Trans>

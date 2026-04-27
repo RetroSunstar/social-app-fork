@@ -6,9 +6,8 @@ import {
   AtUri,
   RichText as RichTextAPI,
 } from '@atproto/api'
-import {Trans} from '@lingui/macro'
+import {Trans} from '@lingui/react/macro'
 
-import {useActorStatus} from '#/lib/actor-status'
 import {MAX_POST_LINES} from '#/lib/constants'
 import {useOpenComposer} from '#/lib/hooks/useOpenComposer'
 import {makeProfileLink} from '#/lib/routes/links'
@@ -30,19 +29,26 @@ import {
   REPLY_LINE_WIDTH,
 } from '#/screens/PostThread/const'
 import {atoms as a, useTheme} from '#/alf'
+import {DebugFieldDisplay} from '#/components/DebugFieldDisplay'
 import {useInteractionState} from '#/components/hooks/useInteractionState'
 import {Trash_Stroke2_Corner0_Rounded as TrashIcon} from '#/components/icons/Trash'
+import {
+  GalleryBleed,
+  maybeApplyGalleryOffsetStyles,
+} from '#/components/images/Gallery'
 import {LabelsOnMyPost} from '#/components/moderation/LabelsOnMe'
 import {PostAlerts} from '#/components/moderation/PostAlerts'
 import {PostHider} from '#/components/moderation/PostHider'
 import {type AppModerationCause} from '#/components/Pills'
 import {Embed, PostEmbedViewContext} from '#/components/Post/Embed'
 import {ShowMoreTextButton} from '#/components/Post/ShowMoreTextButton'
-import {PostControls} from '#/components/PostControls'
+import {TranslatedPost} from '#/components/Post/Translated'
+import {PostControls, PostControlsSkeleton} from '#/components/PostControls'
 import {RichText} from '#/components/RichText'
 import * as Skele from '#/components/Skeleton'
-import {SubtleWebHover} from '#/components/SubtleWebHover'
+import {SubtleHover} from '#/components/SubtleHover'
 import {Text} from '#/components/Typography'
+import {useActorStatus} from '#/features/liveNow'
 
 export type ThreadItemPostProps = {
   item: Extract<ThreadItem, {type: 'threadPost'}>
@@ -129,20 +135,20 @@ const ThreadItemPostOuterWrapper = memo(function ThreadItemPostOuterWrapper({
     !item.ui.showParentReplyLine && overrides?.topBorder !== true
 
   return (
-    <View
-      style={[
-        showTopBorder && [a.border_t, t.atoms.border_contrast_low],
-        {
-          paddingHorizontal: OUTER_SPACE,
-        },
-        // If there's no next child, add a little padding to bottom
-        !item.ui.showChildReplyLine &&
-          !item.ui.precedesChildReadMore && {
-            paddingBottom: OUTER_SPACE / 2,
-          },
-      ]}>
-      {children}
-    </View>
+    <GalleryBleed>
+      <View
+        style={[
+          showTopBorder && [a.border_t, t.atoms.border_contrast_low],
+          {paddingHorizontal: OUTER_SPACE},
+          // If there's no next child, add a little padding to bottom
+          !item.ui.showChildReplyLine &&
+            !item.ui.precedesChildReadMore && {
+              paddingBottom: OUTER_SPACE / 2,
+            },
+        ]}>
+        {children}
+      </View>
+    </GalleryBleed>
   )
 })
 
@@ -238,6 +244,7 @@ const ThreadItemPostInner = memo(function ThreadItemPostInner({
         langs: post.record.langs,
       },
       onPostSuccess: onPostSuccess,
+      logContext: 'PostReply',
     })
   }, [openComposer, post, record, onPostSuccess, moderation])
 
@@ -248,15 +255,16 @@ const ThreadItemPostInner = memo(function ThreadItemPostInner({
   const {isActive: live} = useActorStatus(post.author)
 
   return (
-    <SubtleHover>
+    <SubtleHoverWrapper>
       <ThreadItemPostOuterWrapper item={item} overrides={overrides}>
         <PostHider
           testID={`postThreadItem-by-${post.author.handle}`}
           href={postHref}
           disabled={overrides?.moderation === true}
           modui={moderation.ui('contentList')}
+          hiderStyle={[a.pl_0, a.pr_2xs, a.bg_transparent]}
           iconSize={LINEAR_AVI_WIDTH}
-          iconStyles={{marginLeft: 2, marginRight: 2}}
+          iconStyles={[a.mr_xs]}
           profile={post.author}
           interpretFilterAsBlur>
           <ThreadItemPostParentReplyLine item={item} />
@@ -293,7 +301,14 @@ const ThreadItemPostInner = memo(function ThreadItemPostInner({
                 moderation={moderation}
                 timestamp={post.indexedAt}
                 postHref={postHref}
-                style={[a.pb_xs]}
+                style={[
+                  a.pb_xs,
+                  maybeApplyGalleryOffsetStyles('meta', {
+                    post,
+                    modui: moderation.ui('contentList'),
+                    additionalCauses: additionalPostAlerts,
+                  }),
+                ]}
               />
               <LabelsOnMyPost post={post} style={[a.pb_xs]} />
               <PostAlerts
@@ -302,7 +317,7 @@ const ThreadItemPostInner = memo(function ThreadItemPostInner({
                 additionalCauses={additionalPostAlerts}
               />
               {richText?.text ? (
-                <>
+                <View style={[a.mb_2xs]}>
                   <RichText
                     enableTags
                     value={richText}
@@ -317,10 +332,19 @@ const ThreadItemPostInner = memo(function ThreadItemPostInner({
                       onPress={onPressShowMore}
                     />
                   )}
-                </>
+                </View>
               ) : undefined}
+              <TranslatedPost hideTranslateLink post={post} />
               {post.embed && (
-                <View style={[a.pb_xs]}>
+                <View
+                  style={[
+                    maybeApplyGalleryOffsetStyles('embed', {
+                      post,
+                      modui: moderation.ui('contentList'),
+                      additionalCauses: additionalPostAlerts,
+                    }),
+                    a.pb_xs,
+                  ]}>
                   <Embed
                     embed={post.embed}
                     moderation={moderation}
@@ -336,15 +360,16 @@ const ThreadItemPostInner = memo(function ThreadItemPostInner({
                 logContext="PostThreadItem"
                 threadgateRecord={threadgateRecord}
               />
+              <DebugFieldDisplay subject={post} />
             </View>
           </View>
         </PostHider>
       </ThreadItemPostOuterWrapper>
-    </SubtleHover>
+    </SubtleHoverWrapper>
   )
 })
 
-function SubtleHover({children}: {children: ReactNode}) {
+function SubtleHoverWrapper({children}: {children: ReactNode}) {
   const {
     state: hover,
     onIn: onHoverIn,
@@ -355,7 +380,7 @@ function SubtleHover({children}: {children: ReactNode}) {
       onPointerEnter={onHoverIn}
       onPointerLeave={onHoverOut}
       style={a.pointer}>
-      <SubtleWebHover hover={hover} />
+      <SubtleHover hover={hover} />
       {children}
     </View>
   )
@@ -389,13 +414,7 @@ export function ThreadItemPostSkeleton({index}: {index: number}) {
             )}
           </Skele.Col>
 
-          <Skele.Row style={[a.justify_between, a.pt_xs]}>
-            <Skele.Pill blend size={16} />
-            <Skele.Pill blend size={16} />
-            <Skele.Pill blend size={16} />
-            <Skele.Circle blend size={16} />
-            <View />
-          </Skele.Row>
+          <PostControlsSkeleton />
         </Skele.Col>
       </Skele.Row>
     </View>

@@ -7,7 +7,7 @@ type AllNavigatableRoutes = Omit<
 >
 
 export const router = new Router<AllNavigatableRoutes>({
-  Home: '/',
+  Home: ['/', '/download'],
   Search: '/search',
   Feeds: '/feeds',
   Notifications: '/notifications',
@@ -50,6 +50,7 @@ export const router = new Router<AllNavigatableRoutes>({
   AppearanceSettings: '/settings/appearance',
   SavedFeeds: '/settings/saved-feeds',
   AccountSettings: '/settings/account',
+  AutomationLabelSettings: '/settings/automation-label',
   PrivacyAndSecuritySettings: '/settings/privacy-and-security',
   ActivityPrivacySettings: '/settings/privacy-and-security/activity',
   ContentAndMediaSettings: '/settings/content-and-media',
@@ -70,6 +71,7 @@ export const router = new Router<AllNavigatableRoutes>({
     '/settings/notifications/reposts-on-reposts',
   ActivityNotificationSettings: '/settings/notifications/activity',
   MiscellaneousNotificationSettings: '/settings/notifications/miscellaneous',
+  FindContactsSettings: '/settings/find-contacts',
   // support
   Support: '/support',
   PrivacyPolicy: '/support/privacy',
@@ -84,6 +86,7 @@ export const router = new Router<AllNavigatableRoutes>({
   MessagesSettings: '/messages/settings',
   MessagesInbox: '/messages/inbox',
   MessagesConversation: '/messages/:conversation',
+  MessagesConversationSettings: '/messages/:conversation/settings',
   // starter packs
   Start: '/start/:name/:rkey',
   StarterPackEdit: '/starter-pack/edit/:rkey',
@@ -92,4 +95,5 @@ export const router = new Router<AllNavigatableRoutes>({
   StarterPackWizard: '/starter-pack/create',
   VideoFeed: '/video-feed',
   Bookmarks: '/saved',
+  FindContactsFlow: '/find-contacts',
 })

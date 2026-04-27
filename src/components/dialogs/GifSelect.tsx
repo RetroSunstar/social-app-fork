@@ -8,17 +8,18 @@ import {
 import {type TextInput, View} from 'react-native'
 import {useWindowDimensions} from 'react-native'
 import {Image} from 'expo-image'
-import {msg, Trans} from '@lingui/macro'
-import {useLingui} from '@lingui/react'
+import {Trans, useLingui} from '@lingui/react/macro'
 
-import {logEvent} from '#/lib/statsig/statsig'
 import {cleanError} from '#/lib/strings/errors'
-import {isWeb} from '#/platform/detection'
+import {
+  useFeaturedGifsQuery as useKlipyFeaturedGifsQuery,
+  useGifSearchQuery as useKlipyGifSearchQuery,
+} from '#/state/queries/klipy'
 import {
   type Gif,
-  tenorUrlToBskyGifUrl,
-  useFeaturedGifsQuery,
-  useGifSearchQuery,
+  gifPreviewUrl,
+  useTenorFeaturedGifsQuery,
+  useTenorGifSearchQuery,
 } from '#/state/queries/tenor'
 import {ErrorScreen} from '#/view/com/util/error/ErrorScreen'
 import {ErrorBoundary} from '#/view/com/util/ErrorBoundary'
@@ -29,8 +30,10 @@ import * as Dialog from '#/components/Dialog'
 import * as TextField from '#/components/forms/TextField'
 import {useThrottledValue} from '#/components/hooks/useThrottledValue'
 import {ArrowLeft_Stroke2_Corner0_Rounded as Arrow} from '#/components/icons/Arrow'
-import {MagnifyingGlass2_Stroke2_Corner0_Rounded as Search} from '#/components/icons/MagnifyingGlass2'
+import {MagnifyingGlass_Stroke2_Corner0_Rounded as Search} from '#/components/icons/MagnifyingGlass'
 import {ListFooter, ListMaybePlaceholder} from '#/components/Lists'
+import {useAnalytics} from '#/analytics'
+import {IS_WEB} from '#/env'
 
 export function GifSelectDialog({
   controlRef,
@@ -67,6 +70,7 @@ export function GifSelectDialog({
         bottomInset: 0,
         // use system corner radius on iOS
         ...ios({cornerRadius: undefined}),
+        fullHeight: true,
       }}>
       <Dialog.Handle />
       <ErrorBoundary renderError={renderErrorBoundary}>
@@ -83,7 +87,8 @@ function GifList({
   control: Dialog.DialogControlProps
   onSelectGif: (gif: Gif) => void
 }) {
-  const {_} = useLingui()
+  const ax = useAnalytics()
+  const {t: l} = useLingui()
   const t = useTheme()
   const {gtMobile} = useBreakpoints()
   const textInputRef = useRef<TextInput>(null)
@@ -91,11 +96,14 @@ function GifList({
   const [undeferredSearch, setSearch] = useState('')
   const search = useThrottledValue(undeferredSearch, 500)
   const {height} = useWindowDimensions()
+  const klipyEnabled = ax.features.enabled(ax.features.KlipyGifProviderEnable)
 
   const isSearching = search.length > 0
 
-  const trendingQuery = useFeaturedGifsQuery()
-  const searchQuery = useGifSearchQuery(search)
+  const klipyTrending = useKlipyFeaturedGifsQuery({enabled: klipyEnabled})
+  const klipySearch = useKlipyGifSearchQuery(search, {enabled: klipyEnabled})
+  const tenorTrending = useTenorFeaturedGifsQuery({enabled: !klipyEnabled})
+  const tenorSearch = useTenorGifSearchQuery(search, {enabled: !klipyEnabled})
 
   const {
     data,
@@ -106,7 +114,13 @@ function GifList({
     isPending,
     isError,
     refetch,
-  } = isSearching ? searchQuery : trendingQuery
+  } = klipyEnabled
+    ? isSearching
+      ? klipySearch
+      : klipyTrending
+    : isSearching
+      ? tenorSearch
+      : tenorTrending
 
   const flattenedData = useMemo(() => {
     return data?.pages.flatMap(page => page.results) || []
@@ -149,23 +163,23 @@ function GifList({
           a.pb_sm,
           t.atoms.bg,
         ]}>
-        {!gtMobile && isWeb && (
+        {!gtMobile && IS_WEB && (
           <Button
             size="small"
             variant="ghost"
             color="secondary"
             shape="round"
             onPress={() => control.close()}
-            label={_(msg`Close GIF dialog`)}>
+            label={l`Close GIF dialog`}>
             <ButtonIcon icon={Arrow} size="md" />
           </Button>
         )}
 
-        <TextField.Root style={[!gtMobile && isWeb && a.flex_1]}>
+        <TextField.Root style={[!gtMobile && IS_WEB && a.flex_1]}>
           <TextField.Icon icon={Search} />
           <TextField.Input
-            label={_(msg`Search GIFs`)}
-            placeholder={_(msg`Search Tenor`)}
+            label={l`Search GIFs`}
+            placeholder={klipyEnabled ? l`Search KLIPY` : l`Search Tenor`}
             onChangeText={text => {
               setSearch(text)
               listRef.current?.scrollToOffset({offset: 0, animated: false})
@@ -183,7 +197,7 @@ function GifList({
         </TextField.Root>
       </View>
     )
-  }, [gtMobile, t.atoms.bg, _, control])
+  }, [gtMobile, t.atoms.bg, l, control, klipyEnabled])
 
   return (
     <>
@@ -210,14 +224,18 @@ function GifList({
                 emptyType="results"
                 sideBorders={false}
                 topBorder={false}
-                errorTitle={_(msg`Failed to load GIFs`)}
-                errorMessage={_(msg`There was an issue connecting to Tenor.`)}
+                errorTitle={l`Failed to load GIFs`}
+                errorMessage={
+                  klipyEnabled
+                    ? l`There was an issue connecting to KLIPY.`
+                    : l`There was an issue connecting to Tenor.`
+                }
                 emptyMessage={
                   isSearching
-                    ? _(msg`No search results found for "${search}".`)
-                    : _(
-                        msg`No featured GIFs found. There may be an issue with Tenor.`,
-                      )
+                    ? l`No search results found for "${search}".`
+                    : klipyEnabled
+                      ? l`No featured GIFs found. There may be an issue with KLIPY.`
+                      : l`No featured GIFs found. There may be an issue with Tenor.`
                 }
               />
             )}
@@ -244,23 +262,19 @@ function GifList({
 }
 
 function DialogError({details}: {details?: string}) {
-  const {_} = useLingui()
+  const {t: l} = useLingui()
   const control = Dialog.useDialogContext()
 
   return (
-    <Dialog.ScrollableInner
-      style={a.gap_md}
-      label={_(msg`An error has occurred`)}>
+    <Dialog.ScrollableInner style={a.gap_md} label={l`An error has occurred`}>
       <Dialog.Close />
       <ErrorScreen
-        title={_(msg`Oh no!`)}
-        message={_(
-          msg`There was an unexpected issue in the application. Please let us know if this happened to you!`,
-        )}
+        title={l`Oh no!`}
+        message={l`There was an unexpected issue in the application. Please let us know if this happened to you!`}
         details={details}
       />
       <Button
-        label={_(msg`Close dialog`)}
+        label={l`Close dialog`}
         onPress={() => control.close()}
         color="primary"
         size="large"
@@ -280,18 +294,19 @@ export function GifPreview({
   gif: Gif
   onSelectGif: (gif: Gif) => void
 }) {
+  const ax = useAnalytics()
   const {gtTablet} = useBreakpoints()
-  const {_} = useLingui()
+  const {t: l} = useLingui()
   const t = useTheme()
 
   const onPress = useCallback(() => {
-    logEvent('composer:gif:select', {})
+    ax.metric('composer:gif:select', {})
     onSelectGif(gif)
-  }, [onSelectGif, gif])
+  }, [ax, onSelectGif, gif])
 
   return (
     <Button
-      label={_(msg`Select GIF "${gif.title}"`)}
+      label={l`Select GIF "${gif.title}"`}
       style={[a.flex_1, gtTablet ? {maxWidth: '33%'} : {maxWidth: '50%'}]}
       onPress={onPress}>
       {({pressed}) => (
@@ -300,11 +315,12 @@ export function GifPreview({
             a.flex_1,
             a.mb_sm,
             a.rounded_sm,
-            {aspectRatio: 1, opacity: pressed ? 0.8 : 1},
+            a.aspect_square,
+            {opacity: pressed ? 0.8 : 1},
             t.atoms.bg_contrast_25,
           ]}
           source={{
-            uri: tenorUrlToBskyGifUrl(gif.media_formats.tinygif.url),
+            uri: gifPreviewUrl(gif.media_formats.tinygif.url),
           }}
           contentFit="cover"
           accessibilityLabel={gif.title}

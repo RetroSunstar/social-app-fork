@@ -1,8 +1,7 @@
-import {msg} from '@lingui/macro'
+import {msg} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
 
-import {useRequireAuth} from '#/state/session'
-import {useSession} from '#/state/session'
+import {useRequireAuth, useSession} from '#/state/session'
 import {EventStopper} from '#/view/com/util/EventStopper'
 import {useTheme} from '#/alf'
 import {CloseQuote_Stroke2_Corner1_Rounded as Quote} from '#/components/icons/Quote'
@@ -47,7 +46,7 @@ export const RepostButton = ({
               <PostControlButton
                 testID="repostBtn"
                 active={isReposted}
-                activeColor={t.palette.positive_600}
+                activeColor={t.palette.positive_500}
                 label={props.accessibilityLabel}
                 big={big}
                 {...props}>
@@ -100,7 +99,7 @@ export const RepostButton = ({
     <PostControlButton
       onPress={() => requireAuth(() => {})}
       active={isReposted}
-      activeColor={t.palette.positive_600}
+      activeColor={t.palette.positive_500}
       label={_(msg`Repost or quote post`)}
       big={big}>
       <PostControlButtonIcon icon={Repost} />

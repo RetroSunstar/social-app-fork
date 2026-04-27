@@ -1,3 +1,4 @@
+import {useCallback} from 'react'
 import {
   type $Typed,
   type AppBskyActorDefs,
@@ -7,17 +8,19 @@ import {
   type AppBskyUnspeccedGetPostThreadV2,
   AtUri,
 } from '@atproto/api'
-import {type QueryClient} from '@tanstack/react-query'
+import {type QueryClient, useQueryClient} from '@tanstack/react-query'
 
 import {
   dangerousGetPostShadow,
   updatePostShadow,
 } from '#/state/cache/post-shadow'
+import {findAllPostsInQueryData as findAllPostsInBookmarksQueryData} from '#/state/queries/bookmarks/useBookmarksQuery'
 import {findAllPostsInQueryData as findAllPostsInExploreFeedPreviewsQueryData} from '#/state/queries/explore-feed-previews'
 import {findAllPostsInQueryData as findAllPostsInNotifsQueryData} from '#/state/queries/notifications/feed'
 import {findAllPostsInQueryData as findAllPostsInFeedQueryData} from '#/state/queries/post-feed'
 import {findAllPostsInQueryData as findAllPostsInQuoteQueryData} from '#/state/queries/post-quotes'
 import {findAllPostsInQueryData as findAllPostsInSearchQueryData} from '#/state/queries/search-posts'
+import {usePostThreadContext} from '#/state/queries/usePostThread'
 import {getBranch} from '#/state/queries/usePostThread/traversal'
 import {
   type ApiThreadItem,
@@ -28,8 +31,11 @@ import {
 } from '#/state/queries/usePostThread/types'
 import {getRootPostAtUri} from '#/state/queries/usePostThread/utils'
 import {postViewToThreadPlaceholder} from '#/state/queries/usePostThread/views'
-import {didOrHandleUriMatches, getEmbeddedPost} from '#/state/queries/util'
-import {embedViewRecordToPostView} from '#/state/queries/util'
+import {
+  didOrHandleUriMatches,
+  embedViewRecordToPostView,
+  getEmbeddedPost,
+} from '#/state/queries/util'
 
 export function createCacheMutator({
   queryClient,
@@ -256,6 +262,9 @@ export function* getThreadPlaceholderCandidates(
   for (let post of findAllPostsInSearchQueryData(queryClient, uri)) {
     yield postViewToThreadPlaceholder(post)
   }
+  for (let post of findAllPostsInBookmarksQueryData(queryClient, uri)) {
+    yield postViewToThreadPlaceholder(post)
+  }
   for (let post of findAllPostsInExploreFeedPreviewsQueryData(
     queryClient,
     uri,
@@ -321,4 +330,52 @@ export function* findAllProfilesInQueryData(
       }
     }
   }
+}
+
+export function useUpdatePostThreadThreadgateQueryCache() {
+  const qc = useQueryClient()
+  const context = usePostThreadContext()
+
+  return useCallback(
+    (threadgate: AppBskyFeedDefs.ThreadgateView) => {
+      if (!context) return
+
+      function mutator<T>(thread: ApiThreadItem[]): T[] {
+        for (let i = 0; i < thread.length; i++) {
+          const item = thread[i]
+
+          if (!AppBskyUnspeccedDefs.isThreadItemPost(item.value)) continue
+
+          if (item.depth === 0) {
+            thread.splice(i, 1, {
+              ...item,
+              value: {
+                ...item.value,
+                post: {
+                  ...item.value.post,
+                  threadgate,
+                },
+              },
+            })
+          }
+        }
+
+        return thread as T[]
+      }
+
+      qc.setQueryData<AppBskyUnspeccedGetPostThreadV2.OutputSchema>(
+        context.postThreadQueryKey,
+        data => {
+          if (!data) return
+          return {
+            ...data,
+            thread: mutator<AppBskyUnspeccedGetPostThreadV2.ThreadItem>([
+              ...data.thread,
+            ]),
+          }
+        },
+      )
+    },
+    [qc, context],
+  )
 }

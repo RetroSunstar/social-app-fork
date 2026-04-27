@@ -12,17 +12,14 @@ import {
   View,
   type ViewStyle,
 } from 'react-native'
-import {msg, Trans} from '@lingui/macro'
-import {useLingui} from '@lingui/react'
+import {Trans, useLingui} from '@lingui/react/macro'
 import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native'
 import {useQueryClient} from '@tanstack/react-query'
 
-import {HITSLOP_20} from '#/lib/constants'
-import {HITSLOP_10} from '#/lib/constants'
+import {HITSLOP_10, HITSLOP_20} from '#/lib/constants'
 import {useNonReactiveCallback} from '#/lib/hooks/useNonReactiveCallback'
 import {MagnifyingGlassIcon} from '#/lib/icons'
 import {type NavigationProp} from '#/lib/routes/types'
-import {isWeb} from '#/platform/detection'
 import {listenSoftReset} from '#/state/events'
 import {useActorAutocompleteQuery} from '#/state/queries/actor-autocomplete'
 import {
@@ -30,7 +27,6 @@ import {
   useProfilesQuery,
 } from '#/state/queries/profile'
 import {useSession} from '#/state/session'
-import {useSetMinimalShellMode} from '#/state/shell'
 import {
   makeSearchQuery,
   type Params,
@@ -41,6 +37,8 @@ import {Button, ButtonText} from '#/components/Button'
 import {SearchInput} from '#/components/forms/SearchInput'
 import * as Layout from '#/components/Layout'
 import {Text} from '#/components/Typography'
+import {useAnalytics} from '#/analytics'
+import {IS_WEB} from '#/env'
 import {account, useStorage} from '#/storage'
 import type * as bsky from '#/types/bsky'
 import {AutocompleteResults} from './components/AutocompleteResults'
@@ -48,6 +46,23 @@ import {SearchHistory} from './components/SearchHistory'
 import {SearchLanguageDropdown} from './components/SearchLanguageDropdown'
 import {Explore} from './Explore'
 import {SearchResults} from './SearchResults'
+
+type TabParam = 'user' | 'profile' | 'feed' | 'latest'
+
+// Map tab parameter to tab index
+function getTabIndex(tabParam?: TabParam) {
+  switch (tabParam) {
+    case 'feed':
+      return 3 // Feeds tab
+    case 'user':
+    case 'profile':
+      return 2 // People tab
+    case 'latest':
+      return 1 // Latest tab
+    default:
+      return 0 // Top tab
+  }
+}
 
 export function SearchScreenShell({
   queryParam,
@@ -64,18 +79,27 @@ export function SearchScreenShell({
   inputPlaceholder?: string
   isExplore?: boolean
 }) {
+  const ax = useAnalytics()
   const t = useTheme()
   const {gtMobile} = useBreakpoints()
   const navigation = useNavigation<NavigationProp>()
   const route = useRoute()
   const textInput = useRef<TextInput>(null)
-  const {_} = useLingui()
-  const setMinimalShellMode = useSetMinimalShellMode()
+  const {t: l} = useLingui()
   const {currentAccount} = useSession()
   const queryClient = useQueryClient()
 
+  // Get tab parameter from route params
+  const tabParam = (route.params as {q?: string; tab?: TabParam})?.tab
+  const [activeTab, setActiveTab] = useState(() => getTabIndex(tabParam))
+
   // Query terms
-  const [searchText, setSearchText] = useState<string>(queryParam)
+  const [searchText, _setSearchText] = useState<string>(queryParam)
+  const searchTextRef = useRef(searchText)
+  const setSearchText = (text: string) => {
+    searchTextRef.current = text
+    _setSearchText(text)
+  }
   const {data: autocompleteData, isFetching: isAutocompleteFetching} =
     useActorAutocompleteQuery(searchText, true)
 
@@ -96,7 +120,7 @@ export function SearchScreenShell({
   })
 
   const updateSearchHistory = useCallback(
-    async (item: string) => {
+    (item: string) => {
       if (!item) return
       const newSearchHistory = [
         item,
@@ -108,7 +132,7 @@ export function SearchScreenShell({
   )
 
   const updateProfileHistory = useCallback(
-    async (item: bsky.profile.AnyProfileView) => {
+    (item: bsky.profile.AnyProfileView) => {
       const newAccountHistory = [
         item.did,
         ...accountHistory.filter(p => p !== item.did),
@@ -119,13 +143,13 @@ export function SearchScreenShell({
   )
 
   const deleteSearchHistoryItem = useCallback(
-    async (item: string) => {
+    (item: string) => {
       setTermHistory(termHistory.filter(search => search !== item))
     },
     [termHistory, setTermHistory],
   )
   const deleteProfileHistoryItem = useCallback(
-    async (item: bsky.profile.AnyProfileView) => {
+    (item: bsky.profile.AnyProfileView) => {
       setAccountHistory(accountHistory.filter(p => p !== item.did))
     },
     [accountHistory, setAccountHistory],
@@ -141,7 +165,7 @@ export function SearchScreenShell({
   const [headerHeight, setHeaderHeight] = useState(0)
   const headerRef = useRef(null)
   useLayoutEffect(() => {
-    if (isWeb) {
+    if (IS_WEB) {
       if (!headerRef.current) return
       const measurement = (headerRef.current as Element).getBoundingClientRect()
       setHeaderHeight(measurement.height)
@@ -150,7 +174,7 @@ export function SearchScreenShell({
 
   useFocusEffect(
     useNonReactiveCallback(() => {
-      if (isWeb) {
+      if (IS_WEB) {
         setSearchText(queryParam)
       }
     }),
@@ -162,7 +186,7 @@ export function SearchScreenShell({
     textInput.current?.focus()
   }, [])
 
-  const onChangeText = useCallback(async (text: string) => {
+  const onChangeText = useCallback((text: string) => {
     scrollToTopWeb()
     setSearchText(text)
   }, [])
@@ -173,7 +197,7 @@ export function SearchScreenShell({
       setShowAutocomplete(false)
       updateSearchHistory(item)
 
-      if (isWeb) {
+      if (IS_WEB) {
         // @ts-expect-error route is not typesafe
         navigation.push(route.name, {...route.params, q: item})
       } else {
@@ -188,26 +212,33 @@ export function SearchScreenShell({
     scrollToTopWeb()
     textInput.current?.blur()
     setShowAutocomplete(false)
-    if (isWeb) {
+    if (IS_WEB) {
       // Empty params resets the URL to be /search rather than /search?q=
-
-      const {q: _q, ...parameters} = (route.params ?? {}) as {
+      // Also clear the tab parameter
+      const {
+        q: _q,
+        tab: _tab,
+        ...parameters
+      } = (route.params ?? {}) as {
         [key: string]: string
       }
       // @ts-expect-error route is not typesafe
       navigation.replace(route.name, parameters)
     } else {
       setSearchText('')
-      navigation.setParams({q: ''})
+      navigation.setParams({q: '', tab: undefined})
     }
   }, [setShowAutocomplete, setSearchText, navigation, route.params, route.name])
 
-  const onSubmit = useCallback(() => {
-    navigateToItem(searchText)
-  }, [navigateToItem, searchText])
+  const onSubmit = (source: 'typed' | 'autocomplete') => () => {
+    ax.metric('search:query', {
+      source,
+    })
+    navigateToItem(searchTextRef.current)
+  }
 
   const onAutocompleteResultPress = useCallback(() => {
-    if (isWeb) {
+    if (IS_WEB) {
       setShowAutocomplete(false)
     } else {
       textInput.current?.blur()
@@ -234,30 +265,33 @@ export function SearchScreenShell({
   )
 
   const onSoftReset = useCallback(() => {
-    if (isWeb) {
+    if (IS_WEB) {
       // Empty params resets the URL to be /search rather than /search?q=
-
-      const {q: _q, ...parameters} = (route.params ?? {}) as {
+      // Also clear the tab parameter when soft resetting
+      const {
+        q: _q,
+        tab: _tab,
+        ...parameters
+      } = (route.params ?? {}) as {
         [key: string]: string
       }
       // @ts-expect-error route is not typesafe
       navigation.replace(route.name, parameters)
     } else {
       setSearchText('')
-      navigation.setParams({q: ''})
+      navigation.setParams({q: '', tab: undefined})
       textInput.current?.focus()
     }
   }, [navigation, route])
 
   useFocusEffect(
     useCallback(() => {
-      setMinimalShellMode(false)
       return listenSoftReset(onSoftReset)
-    }, [onSoftReset, setMinimalShellMode]),
+    }, [onSoftReset]),
   )
 
   const onSearchInputFocus = useCallback(() => {
-    if (isWeb) {
+    if (IS_WEB) {
       // Prevent a jump on iPad by ensuring that
       // the initial focused render has no result list.
       requestAnimationFrame(() => {
@@ -268,9 +302,21 @@ export function SearchScreenShell({
     }
   }, [setShowAutocomplete])
 
-  const focusSearchInput = useCallback(() => {
-    textInput.current?.focus()
-  }, [])
+  const focusSearchInput = useCallback(
+    (tab?: TabParam) => {
+      textInput.current?.focus()
+
+      // If a tab is specified, set the tab parameter
+      if (tab) {
+        if (IS_WEB) {
+          navigation.setParams({...route.params, tab})
+        } else {
+          navigation.setParams({tab})
+        }
+      }
+    },
+    [navigation, route],
+  )
 
   const showHeader = !gtMobile || navButton !== 'menu'
 
@@ -279,7 +325,7 @@ export function SearchScreenShell({
       <View
         ref={headerRef}
         onLayout={evt => {
-          if (isWeb) setHeaderHeight(evt.nativeEvent.layout.height)
+          if (IS_WEB) setHeaderHeight(evt.nativeEvent.layout.height)
         }}
         style={[
           a.relative,
@@ -328,20 +374,21 @@ export function SearchScreenShell({
                     onFocus={onSearchInputFocus}
                     onChangeText={onChangeText}
                     onClearText={onPressClearQuery}
-                    onSubmitEditing={onSubmit}
+                    onSubmitEditing={onSubmit('typed')}
                     placeholder={
-                      inputPlaceholder ??
-                      _(msg`Search for posts, users, or feeds`)
+                      inputPlaceholder ?? l`Search for posts, users, or feeds`
                     }
                     hitSlop={{...HITSLOP_20, top: 0}}
+                    hotkey={true}
                   />
                 </View>
                 {showAutocomplete && (
                   <Button
-                    label={_(msg`Cancel search`)}
+                    label={l`Cancel search`}
                     size="large"
                     variant="ghost"
                     color="secondary"
+                    shape="rectangular"
                     style={[a.px_sm]}
                     onPress={onPressCancelSearch}
                     hitSlop={HITSLOP_10}>
@@ -381,7 +428,7 @@ export function SearchScreenShell({
             isAutocompleteFetching={isAutocompleteFetching}
             autocompleteData={autocompleteData}
             searchText={searchText}
-            onSubmit={onSubmit}
+            onSubmit={onSubmit('autocomplete')}
             onResultPress={onAutocompleteResultPress}
             onProfileClick={handleProfileClick}
           />
@@ -402,6 +449,9 @@ export function SearchScreenShell({
           flex: 1,
         }}>
         <SearchScreenInner
+          key={params.lang}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
           query={query}
           queryWithParams={queryWithParams}
           headerHeight={headerHeight}
@@ -413,30 +463,27 @@ export function SearchScreenShell({
 }
 
 let SearchScreenInner = ({
+  activeTab,
+  setActiveTab,
   query,
   queryWithParams,
   headerHeight,
   focusSearchInput,
 }: {
+  activeTab: number
+  setActiveTab: React.Dispatch<React.SetStateAction<number>>
   query: string
   queryWithParams: string
   headerHeight: number
-  focusSearchInput: () => void
+  focusSearchInput: (tab?: TabParam) => void
 }): React.ReactNode => {
   const t = useTheme()
-  const setMinimalShellMode = useSetMinimalShellMode()
   const {hasSession} = useSession()
   const {gtTablet} = useBreakpoints()
-  const [activeTab, setActiveTab] = useState(0)
-  const {_} = useLingui()
 
-  const onPageSelected = useCallback(
-    (index: number) => {
-      setMinimalShellMode(false)
-      setActiveTab(index)
-    },
-    [setMinimalShellMode],
-  )
+  const onPageSelected = (index: number) => {
+    setActiveTab(index)
+  }
 
   return queryWithParams ? (
     <SearchResults
@@ -445,6 +492,7 @@ let SearchScreenInner = ({
       activeTab={activeTab}
       headerHeight={headerHeight}
       onPageSelected={onPageSelected}
+      initialPage={activeTab}
     />
   ) : hasSession ? (
     <Explore focusSearchInput={focusSearchInput} headerHeight={headerHeight} />
@@ -531,7 +579,7 @@ function useQueryManager({
 }
 
 function scrollToTopWeb() {
-  if (isWeb) {
+  if (IS_WEB) {
     window.scrollTo(0, 0)
   }
 }

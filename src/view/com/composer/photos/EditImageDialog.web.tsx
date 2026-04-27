@@ -2,8 +2,9 @@ import 'react-image-crop/dist/ReactCrop.css'
 
 import {useCallback, useImperativeHandle, useRef, useState} from 'react'
 import {View} from 'react-native'
-import {msg, Trans} from '@lingui/macro'
+import {msg} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
 import ReactCrop, {type PercentCrop} from 'react-image-crop'
 
 import {
@@ -116,7 +117,6 @@ function EditImageInner({
   }) {
   const t = useTheme()
   const [isDragging, setIsDragging] = useState(false)
-  const {_} = useLingui()
   const control = Dialog.useDialogContext()
 
   const source = image.source

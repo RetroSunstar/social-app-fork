@@ -1,5 +1,5 @@
 import {View} from 'react-native'
-import {Trans} from '@lingui/macro'
+import {Trans} from '@lingui/react/macro'
 
 import {useSession} from '#/state/session'
 import {UserInfoText} from '#/view/com/util/UserInfoText'
@@ -57,7 +57,9 @@ export function PostRepliedTo({
         size="xs"
         style={[t.atoms.text_contrast_medium, {top: -1}]}
       />
-      <Text style={textStyle}>{label}</Text>
+      <Text style={[a.flex_1, textStyle]} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   )
 }

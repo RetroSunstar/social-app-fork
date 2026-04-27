@@ -1,7 +1,8 @@
 import {useCallback} from 'react'
 import {type ChatBskyActorDefs, ChatBskyConvoDefs} from '@atproto/api'
-import {msg, Trans} from '@lingui/macro'
+import {msg} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
 import {StackActions, useNavigation} from '@react-navigation/native'
 import {useQueryClient} from '@tanstack/react-query'
 
@@ -11,8 +12,10 @@ import {useEmail} from '#/state/email-verification'
 import {useAcceptConversation} from '#/state/queries/messages/accept-conversation'
 import {precacheConvoQuery} from '#/state/queries/messages/conversation'
 import {useLeaveConvo} from '#/state/queries/messages/leave-conversation'
-import {useProfileBlockMutationQueue} from '#/state/queries/profile'
-import * as Toast from '#/view/com/util/Toast'
+import {
+  unstableCacheProfileView,
+  useProfileBlockMutationQueue,
+} from '#/state/queries/profile'
 import {atoms as a} from '#/alf'
 import {
   Button,
@@ -25,18 +28,19 @@ import {
   EmailDialogScreenID,
   useEmailDialogControl,
 } from '#/components/dialogs/EmailDialog'
-import {ReportDialog} from '#/components/dms/ReportDialog'
+import {AfterReportDialog} from '#/components/dms/AfterReportDialog'
 import {CircleX_Stroke2_Corner0_Rounded} from '#/components/icons/CircleX'
 import {Flag_Stroke2_Corner0_Rounded as FlagIcon} from '#/components/icons/Flag'
 import {PersonX_Stroke2_Corner0_Rounded as PersonXIcon} from '#/components/icons/Person'
 import {Loader} from '#/components/Loader'
 import * as Menu from '#/components/Menu'
+import {ReportDialog} from '#/components/moderation/ReportDialog'
+import * as Toast from '#/components/Toast'
 
 export function RejectMenu({
   convo,
   profile,
   size = 'tiny',
-  variant = 'outline',
   color = 'secondary',
   label,
   showDeleteConvo,
@@ -52,6 +56,8 @@ export function RejectMenu({
   const {_} = useLingui()
   const shadowedProfile = useProfileShadow(profile)
   const navigation = useNavigation<NavigationProp>()
+  const queryClient = useQueryClient()
+
   const {mutate: leaveConvo} = useLeaveConvo(convo.id, {
     onMutate: () => {
       if (currentScreen === 'conversation') {
@@ -66,7 +72,9 @@ export function RejectMenu({
             message: 'Failed to delete chat',
           }),
         ),
-        'xmark',
+        {
+          type: 'error',
+        },
       )
     },
   })
@@ -80,7 +88,9 @@ export function RejectMenu({
           message: 'Chat deleted',
         }),
       ),
-      'check',
+      {
+        type: 'success',
+      },
     )
     leaveConvo()
   }, [leaveConvo, _])
@@ -93,7 +103,9 @@ export function RejectMenu({
           message: 'Account blocked',
         }),
       ),
-      'check',
+      {
+        type: 'success',
+      },
     )
     // block and also delete convo
     queueBlock()
@@ -101,6 +113,7 @@ export function RejectMenu({
   }, [queueBlock, leaveConvo, _])
 
   const reportControl = useDialogControl()
+  const blockOrDeleteControl = useDialogControl()
 
   const lastMessage = ChatBskyConvoDefs.isMessageView(convo.lastMessage)
     ? convo.lastMessage
@@ -117,7 +130,6 @@ export function RejectMenu({
               label={triggerProps.accessibilityLabel}
               style={[a.flex_1]}
               color={color}
-              variant={variant}
               size={size}>
               <ButtonText>
                 {label || (
@@ -129,7 +141,7 @@ export function RejectMenu({
             </Button>
           )}
         </Menu.Trigger>
-        <Menu.Outer>
+        <Menu.Outer showCancel>
           <Menu.Group>
             {showDeleteConvo && (
               <Menu.Item
@@ -164,15 +176,33 @@ export function RejectMenu({
         </Menu.Outer>
       </Menu.Root>
       {lastMessage && (
-        <ReportDialog
-          currentScreen={currentScreen}
-          params={{
-            type: 'convoMessage',
-            convoId: convo.id,
-            message: lastMessage,
-          }}
-          control={reportControl}
-        />
+        <>
+          <ReportDialog
+            subject={{
+              view: 'convo',
+              convoId: convo.id,
+              message: lastMessage,
+            }}
+            control={reportControl}
+            onAfterSubmit={() => {
+              const sender = convo.members.find(
+                member => member.did === lastMessage.sender.did,
+              )
+              if (sender) {
+                unstableCacheProfileView(queryClient, sender)
+              }
+              blockOrDeleteControl.open()
+            }}
+          />
+          <AfterReportDialog
+            control={blockOrDeleteControl}
+            currentScreen={currentScreen}
+            params={{
+              convoId: convo.id,
+              message: lastMessage,
+            }}
+          />
+        </>
       )}
     </>
   )
@@ -181,7 +211,6 @@ export function RejectMenu({
 export function AcceptChatButton({
   convo,
   size = 'tiny',
-  variant = 'solid',
   color = 'secondary_inverted',
   label,
   currentScreen,
@@ -222,7 +251,9 @@ export function AcceptChatButton({
             message: 'Failed to accept chat',
           }),
         ),
-        'xmark',
+        {
+          type: 'error',
+        },
       )
     },
   })
@@ -248,7 +279,6 @@ export function AcceptChatButton({
       {...props}
       label={label || _(msg`Accept chat request`)}
       size={size}
-      variant={variant}
       color={color}
       style={a.flex_1}
       onPress={onPressAccept}>
@@ -266,7 +296,6 @@ export function AcceptChatButton({
 export function DeleteChatButton({
   convo,
   size = 'tiny',
-  variant = 'outline',
   color = 'secondary',
   label,
   currentScreen,
@@ -293,7 +322,9 @@ export function DeleteChatButton({
             message: 'Failed to delete chat',
           }),
         ),
-        'xmark',
+        {
+          type: 'error',
+        },
       )
     },
   })
@@ -306,7 +337,9 @@ export function DeleteChatButton({
           message: 'Chat deleted',
         }),
       ),
-      'check',
+      {
+        type: 'success',
+      },
     )
     leaveConvo()
   }, [leaveConvo, _])
@@ -315,7 +348,6 @@ export function DeleteChatButton({
     <Button
       label={label || _(msg`Delete chat`)}
       size={size}
-      variant={variant}
       color={color}
       style={a.flex_1}
       onPress={onPressDelete}

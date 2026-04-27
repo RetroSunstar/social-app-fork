@@ -1,11 +1,11 @@
 import {type JSX, useCallback, useMemo, useState} from 'react'
 import {StyleSheet, View} from 'react-native'
 import {type AppBskyActorDefs} from '@atproto/api'
-import {msg, plural, Trans} from '@lingui/macro'
+import {msg, plural} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
 import {useNavigation, useNavigationState} from '@react-navigation/native'
 
-import {useActorStatus} from '#/lib/actor-status'
 import {useAccountSwitcher} from '#/lib/hooks/useAccountSwitcher'
 import {useOpenComposer} from '#/lib/hooks/useOpenComposer'
 import {usePalette} from '#/lib/hooks/usePalette'
@@ -16,11 +16,9 @@ import {
   type CommonNavigatorParams,
   type NavigationProp,
 } from '#/lib/routes/types'
-import {useGate} from '#/lib/statsig/statsig'
 import {sanitizeDisplayName} from '#/lib/strings/display-names'
 import {isInvalidHandle, sanitizeHandle} from '#/lib/strings/handles'
 import {emitSoftReset} from '#/state/events'
-import {useHomeBadge} from '#/state/home-badge'
 import {useFetchHandle} from '#/state/queries/handle'
 import {useUnreadMessageCount} from '#/state/queries/messages/list-conversations'
 import {useUnreadNotifications} from '#/state/queries/notifications/unread'
@@ -45,7 +43,7 @@ import {
   BulletList_Filled_Corner0_Rounded as ListFilled,
   BulletList_Stroke2_Corner0_Rounded as List,
 } from '#/components/icons/BulletList'
-import {DotGrid_Stroke2_Corner0_Rounded as EllipsisIcon} from '#/components/icons/DotGrid'
+import {DotGrid3x1_Stroke2_Corner0_Rounded as EllipsisIcon} from '#/components/icons/DotGrid'
 import {EditBig_Stroke2_Corner0_Rounded as EditBig} from '#/components/icons/EditBig'
 import {
   Hashtag_Filled_Corner0_Rounded as HashtagFilled,
@@ -55,8 +53,10 @@ import {
   HomeOpen_Filled_Corner0_Rounded as HomeFilled,
   HomeOpen_Stoke2_Corner0_Rounded as Home,
 } from '#/components/icons/HomeOpen'
-import {MagnifyingGlass_Filled_Stroke2_Corner0_Rounded as MagnifyingGlassFilled} from '#/components/icons/MagnifyingGlass'
-import {MagnifyingGlass2_Stroke2_Corner0_Rounded as MagnifyingGlass} from '#/components/icons/MagnifyingGlass2'
+import {
+  MagnifyingGlass_Filled_Stroke2_Corner0_Rounded as MagnifyingGlassFilled,
+  MagnifyingGlass_Stroke2_Corner0_Rounded as MagnifyingGlass,
+} from '#/components/icons/MagnifyingGlass'
 import {
   Message_Stroke2_Corner0_Rounded as Message,
   Message_Stroke2_Corner0_Rounded_Filled as MessageFilled,
@@ -74,6 +74,8 @@ import {CENTER_COLUMN_OFFSET} from '#/components/Layout'
 import * as Menu from '#/components/Menu'
 import * as Prompt from '#/components/Prompt'
 import {Text} from '#/components/Typography'
+import {useAgeAssurance} from '#/ageAssurance'
+import {useActorStatus} from '#/features/liveNow'
 import {PlatformInfo} from '../../../../modules/expo-bluesky-swiss-army'
 import {router} from '../../../routes'
 
@@ -348,7 +350,7 @@ function SwitchMenuItem({
           '@',
         )}`,
       )}
-      onPress={() => onPressSwitchAccount(account, 'SwitchAccount')}>
+      onPress={() => void onPressSwitchAccount(account, 'SwitchAccount')}>
       <View>
         <UserAvatar
           avatar={profile?.avatar}
@@ -560,7 +562,7 @@ function ComposeBtn() {
   }
 
   const onPressCompose = async () =>
-    openComposer({mention: await getProfileHandle()})
+    openComposer({mention: await getProfileHandle(), logContext: 'Fab'})
 
   if (leftNavMinimal) {
     return null
@@ -571,14 +573,14 @@ function ComposeBtn() {
       <Button
         disabled={isFetchingHandle}
         label={_(msg`Compose new post`)}
-        onPress={onPressCompose}
+        onPress={() => void onPressCompose()}
         size="large"
         variant="solid"
         color="primary"
         style={[a.rounded_full]}>
         <ButtonIcon icon={EditBig} position="left" />
         <ButtonText>
-          <Trans context="action">New Post</Trans>
+          <Trans context="action">New post</Trans>
         </ButtonText>
       </Button>
     </View>
@@ -589,12 +591,13 @@ function ChatNavItem() {
   const pal = usePalette('default')
   const {_} = useLingui()
   const numUnreadMessages = useUnreadMessageCount()
+  const aa = useAgeAssurance()
 
   return (
     <NavItem
       href="/messages"
-      count={numUnreadMessages.numUnread}
-      hasNew={numUnreadMessages.hasNew}
+      count={aa.flags.chatDisabled ? undefined : numUnreadMessages.numUnread}
+      hasNew={aa.flags.chatDisabled ? false : numUnreadMessages.hasNew}
       icon={
         <Message style={pal.text} aria-hidden={true} width={NAV_ICON_WIDTH} />
       }
@@ -617,8 +620,6 @@ export function DesktopLeftNav() {
   const {isDesktop} = useWebMediaQueries()
   const {leftNavMinimal, centerColumnOffset} = useLayoutBreakpoints()
   const numUnreadNotifications = useUnreadNotifications()
-  const hasHomeBadge = useHomeBadge()
-  const gate = useGate()
 
   if (!hasSession && !isDesktop) {
     return null
@@ -630,6 +631,7 @@ export function DesktopLeftNav() {
       style={[
         a.px_xl,
         styles.leftNav,
+        !hasSession && !leftNavMinimal && styles.leftNavWide,
         leftNavMinimal && styles.leftNavMinimal,
         {
           transform: [
@@ -654,7 +656,6 @@ export function DesktopLeftNav() {
         <>
           <NavItem
             href="/"
-            hasNew={hasHomeBadge && gate('remove_show_latest_button')}
             icon={
               <Home
                 aria-hidden={true}
@@ -823,6 +824,9 @@ const styles = StyleSheet.create({
     // @ts-expect-error web only
     maxHeight: '100vh',
     overflowY: 'auto',
+  },
+  leftNavWide: {
+    width: 245,
   },
   leftNavMinimal: {
     paddingTop: 0,

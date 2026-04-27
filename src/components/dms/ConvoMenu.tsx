@@ -1,9 +1,11 @@
-import React, {useCallback} from 'react'
+import {memo, useCallback} from 'react'
 import {Keyboard, View} from 'react-native'
 import {type ChatBskyConvoDefs, type ModerationCause} from '@atproto/api'
-import {msg, Trans} from '@lingui/macro'
+import {msg} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
 import {useNavigation} from '@react-navigation/native'
+import {useQueryClient} from '@tanstack/react-query'
 
 import {type NavigationProp} from '#/lib/routes/types'
 import {type Shadow} from '#/state/cache/types'
@@ -12,18 +14,20 @@ import {
   useMarkAsReadMutation,
 } from '#/state/queries/messages/conversation'
 import {useMuteConvo} from '#/state/queries/messages/mute-conversation'
-import {useProfileBlockMutationQueue} from '#/state/queries/profile'
-import * as Toast from '#/view/com/util/Toast'
+import {
+  unstableCacheProfileView,
+  useProfileBlockMutationQueue,
+} from '#/state/queries/profile'
 import {type ViewStyleProp} from '#/alf'
 import {atoms as a} from '#/alf'
 import {Button, ButtonIcon} from '#/components/Button'
+import {AfterReportDialog} from '#/components/dms/AfterReportDialog'
 import {BlockedByListDialog} from '#/components/dms/BlockedByListDialog'
 import {LeaveConvoPrompt} from '#/components/dms/LeaveConvoPrompt'
 import {ReportConversationPrompt} from '#/components/dms/ReportConversationPrompt'
-import {ReportDialog} from '#/components/dms/ReportDialog'
-import {ArrowBoxLeft_Stroke2_Corner0_Rounded as ArrowBoxLeft} from '#/components/icons/ArrowBoxLeft'
-import {Bubble_Stroke2_Corner2_Rounded as Bubble} from '#/components/icons/Bubble'
-import {DotGrid_Stroke2_Corner0_Rounded as DotsHorizontal} from '#/components/icons/DotGrid'
+import {ArrowBoxLeft_Stroke2_Corner0_Rounded as ArrowBoxLeftIcon} from '#/components/icons/ArrowBoxLeft'
+import {Bubble_Stroke2_Corner2_Rounded as BubbleIcon} from '#/components/icons/Bubble'
+import {DotGrid3x1_Stroke2_Corner0_Rounded as DotsHorizontalIcon} from '#/components/icons/DotGrid'
 import {Flag_Stroke2_Corner0_Rounded as Flag} from '#/components/icons/Flag'
 import {Mute_Stroke2_Corner0_Rounded as Mute} from '#/components/icons/Mute'
 import {
@@ -33,7 +37,9 @@ import {
 } from '#/components/icons/Person'
 import {SpeakerVolumeFull_Stroke2_Corner0_Rounded as Unmute} from '#/components/icons/Speaker'
 import * as Menu from '#/components/Menu'
+import {ReportDialog} from '#/components/moderation/ReportDialog'
 import * as Prompt from '#/components/Prompt'
+import * as Toast from '#/components/Toast'
 import type * as bsky from '#/types/bsky'
 
 let ConvoMenu = ({
@@ -61,10 +67,12 @@ let ConvoMenu = ({
   style?: ViewStyleProp['style']
 }): React.ReactNode => {
   const {_} = useLingui()
+  const queryClient = useQueryClient()
 
   const leaveConvoControl = Prompt.usePromptControl()
   const reportControl = Prompt.usePromptControl()
   const blockedByListControl = Prompt.usePromptControl()
+  const blockOrDeleteControl = Prompt.usePromptControl()
 
   const {listBlocks} = blockInfo
 
@@ -87,7 +95,7 @@ let ConvoMenu = ({
                   shape="round"
                   variant="ghost"
                   style={[a.bg_transparent]}>
-                  <ButtonIcon icon={DotsHorizontal} size="md" />
+                  <ButtonIcon icon={DotsHorizontalIcon} size="md" />
                 </Button>
               )}
             </Menu.Trigger>
@@ -113,15 +121,33 @@ let ConvoMenu = ({
         currentScreen={currentScreen}
       />
       {latestReportableMessage ? (
-        <ReportDialog
-          currentScreen={currentScreen}
-          params={{
-            type: 'convoMessage',
-            convoId: convo.id,
-            message: latestReportableMessage,
-          }}
-          control={reportControl}
-        />
+        <>
+          <ReportDialog
+            subject={{
+              view: 'convo',
+              convoId: convo.id,
+              message: latestReportableMessage,
+            }}
+            control={reportControl}
+            onAfterSubmit={() => {
+              const sender = convo.members.find(
+                member => member.did === latestReportableMessage.sender.did,
+              )
+              if (sender) {
+                unstableCacheProfileView(queryClient, sender)
+              }
+              blockOrDeleteControl.open()
+            }}
+          />
+          <AfterReportDialog
+            control={blockOrDeleteControl}
+            currentScreen={currentScreen}
+            params={{
+              convoId: convo.id,
+              message: latestReportableMessage,
+            }}
+          />
+        </>
       ) : (
         <ReportConversationPrompt control={reportControl} />
       )}
@@ -133,7 +159,7 @@ let ConvoMenu = ({
     </>
   )
 }
-ConvoMenu = React.memo(ConvoMenu)
+ConvoMenu = memo(ConvoMenu)
 
 function MenuContent({
   convo: initialConvo,
@@ -164,7 +190,7 @@ function MenuContent({
   const isDeletedAccount = profile.handle === 'missing.invalid'
 
   const convoId = initialConvo.id
-  const {data: convo} = useConvoQuery(initialConvo)
+  const {data: convo} = useConvoQuery({convoId})
 
   const onNavigateToProfile = useCallback(() => {
     navigation.navigate('Profile', {name: profile.did})
@@ -179,22 +205,24 @@ function MenuContent({
       }
     },
     onError: () => {
-      Toast.show(_(msg`Could not mute chat`), 'xmark')
+      Toast.show(_(msg`Could not mute chat`), {
+        type: 'error',
+      })
     },
   })
 
   const [queueBlock, queueUnblock] = useProfileBlockMutationQueue(profile)
 
-  const toggleBlock = React.useCallback(() => {
+  const toggleBlock = useCallback(() => {
     if (listBlocks.length) {
       blockedByListControl.open()
       return
     }
 
     if (userBlock) {
-      queueUnblock()
+      void queueUnblock()
     } else {
-      queueBlock()
+      void queueBlock()
     }
   }, [userBlock, listBlocks, blockedByListControl, queueBlock, queueUnblock])
 
@@ -205,7 +233,7 @@ function MenuContent({
       <Menu.ItemText>
         <Trans>Leave conversation</Trans>
       </Menu.ItemText>
-      <Menu.ItemIcon icon={ArrowBoxLeft} />
+      <Menu.ItemIcon icon={ArrowBoxLeftIcon} />
     </Menu.Item>
   ) : (
     <>
@@ -217,7 +245,7 @@ function MenuContent({
             <Menu.ItemText>
               <Trans>Mark as read</Trans>
             </Menu.ItemText>
-            <Menu.ItemIcon icon={Bubble} />
+            <Menu.ItemIcon icon={BubbleIcon} />
           </Menu.Item>
         )}
         <Menu.Item
@@ -268,7 +296,7 @@ function MenuContent({
           <Menu.ItemText>
             <Trans>Leave conversation</Trans>
           </Menu.ItemText>
-          <Menu.ItemIcon icon={ArrowBoxLeft} />
+          <Menu.ItemIcon icon={ArrowBoxLeftIcon} />
         </Menu.Item>
       </Menu.Group>
     </>
