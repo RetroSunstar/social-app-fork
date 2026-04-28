@@ -31,17 +31,11 @@ export const PostQuotesScreen = ({route}: Props) => {
                 <Trans>Quotes</Trans>
               </Layout.Header.TitleText>
               <Layout.Header.SubtitleText>
-                {quoteMetrics === 'hide-all' ||
-                (quoteMetrics === 'hide-own' &&
-                  post?.thread.type === 'post' &&
-                  post.thread.post.author.did ===
-                    currentAccount?.did) ? null : (
-                  <Plural
-                    value={quoteCount ?? 0}
-                    one="# quote"
-                    other="# quotes"
-                  />
-                )}
+                <Plural
+                  value={quoteCount ?? 0}
+                  one="# quote"
+                  other="# quotes"
+                />
               </Layout.Header.SubtitleText>
             </>
           )}

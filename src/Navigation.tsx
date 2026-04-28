@@ -112,7 +112,6 @@ import {FollowingFeedPreferencesScreen} from '#/screens/Settings/FollowingFeedPr
 import {InterestsSettingsScreen} from '#/screens/Settings/InterestsSettings'
 import {LanguageSettingsScreen} from '#/screens/Settings/LanguageSettings'
 import {LegacyNotificationSettingsScreen} from '#/screens/Settings/LegacyNotificationSettings'
-import {MetricVisibilitySettingsScreen} from '#/screens/Settings/MetricVisibilitySettings'
 import {NotificationSettingsScreen} from '#/screens/Settings/NotificationSettings'
 import {ActivityNotificationSettingsScreen} from '#/screens/Settings/NotificationSettings/ActivityNotificationSettings'
 import {LikeNotificationSettingsScreen} from '#/screens/Settings/NotificationSettings/LikeNotificationSettings'
@@ -536,14 +535,6 @@ function commonScreens(Stack: typeof Flat, unreadCountLabel?: string) {
         getComponent={() => InterestsSettingsScreen}
         options={{
           title: title(msg`Your interests`),
-          requireAuth: true,
-        }}
-      />
-      <Stack.Screen
-        name="MetricVisibilitySettings"
-        getComponent={() => MetricVisibilitySettingsScreen}
-        options={{
-          title: title(msg`Metric Visibility`),
           requireAuth: true,
         }}
       />

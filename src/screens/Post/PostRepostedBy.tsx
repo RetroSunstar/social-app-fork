@@ -31,17 +31,11 @@ export const PostRepostedByScreen = ({route}: Props) => {
                 <Trans>Reposted By</Trans>
               </Layout.Header.TitleText>
               <Layout.Header.SubtitleText>
-                {repostMetrics === 'hide-all' ||
-                (repostMetrics === 'hide-own' &&
-                  post?.thread.type === 'post' &&
-                  post.thread.post.author.did ===
-                    currentAccount?.did) ? null : (
-                  <Plural
-                    value={quoteCount ?? 0}
-                    one="# repost"
-                    other="# reposts"
-                  />
-                )}
+                <Plural
+                  value={quoteCount ?? 0}
+                  one="# repost"
+                  other="# reposts"
+                />
               </Layout.Header.SubtitleText>
             </>
           )}

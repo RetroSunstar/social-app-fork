@@ -31,13 +31,7 @@ export const PostLikedByScreen = ({route}: Props) => {
                 <Trans>Liked By</Trans>
               </Layout.Header.TitleText>
               <Layout.Header.SubtitleText>
-                {likeMetrics === 'hide-all' ||
-                (likeMetrics === 'hide-own' &&
-                  post?.thread.type === 'post' &&
-                  post.thread.post.author.did ===
-                    currentAccount?.did) ? null : (
-                  <Plural value={likeCount ?? 0} one="# like" other="# likes" />
-                )}
+                <Plural value={likeCount ?? 0} one="# like" other="# likes" />
               </Layout.Header.SubtitleText>
             </>
           )}

@@ -200,9 +200,6 @@ const ThreadItemAnchorInner = memo(function ThreadItemAnchorInner({
   const authorHref = makeProfileLink(post.author)
   const isThreadAuthor = getThreadAuthor(post, record) === currentAccount?.did
 
-  const {likeMetrics, repostMetrics, quoteMetrics, bookmarkMetrics} =
-    useMerticDisabledPref()
-
   const likesHref = useMemo(() => {
     const urip = new AtUri(post.uri)
     return makeProfileLink(post.author, 'post', urip.rkey, 'liked-by')
