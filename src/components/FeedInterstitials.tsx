@@ -435,18 +435,29 @@ export function ProfileGrid({
           </Animated.View>
         ))
 
-  if (disabledSimilarAccounts == true) {
-    return null
-  }
-  
   // Use totalProfileCount (before dismissals) for minLength check on initial render.
   const profileCountForMinCheck = totalProfileCount ?? profiles.length
 
   useEffect(() => {
-    if (error || (!isLoading && profileCountForMinCheck < minLength)) {
+    if (
+      error ||
+      (!isLoading && profileCountForMinCheck < minLength) ||
+      disabledSimilarAccounts
+    ) {
       onRequestHide?.()
     }
-  }, [error, isLoading, onRequestHide, profileCountForMinCheck, minLength])
+  }, [
+    error,
+    isLoading,
+    onRequestHide,
+    profileCountForMinCheck,
+    minLength,
+    disabledSimilarAccounts,
+  ])
+
+  if (disabledSimilarAccounts) {
+    return null
+  }
 
   if (error || (!isLoading && profileCountForMinCheck < minLength)) {
     ax.logger.debug(`Not enough profiles to show suggested follows`)
