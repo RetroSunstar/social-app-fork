@@ -1,4 +1,4 @@
-# CLAUDE.md - Bluesky Social App Development Guide
+# CLAUDE.md – Bluesky Social App Development Guide
 
 This document provides guidance for working effectively in the Bluesky Social app codebase.
 
@@ -7,12 +7,16 @@ This document provides guidance for working effectively in the Bluesky Social ap
 Bluesky Social is a cross-platform social media application built with React Native and Expo. It runs on iOS, Android, and Web, connecting to the AT Protocol (atproto) decentralized social network.
 
 **Tech Stack:**
+
+- React 19.1
 - React Native 0.81 with Expo 54
-- TypeScript
-- React Navigation for routing
+- TypeScript 6
+- React Navigation 7 for routing
 - TanStack Query (React Query) for data fetching
-- Lingui for internationalization
+- Lingui 5 for internationalization
 - Custom design system called ALF (Application Layout Framework)
+
+Prefer using the latest features available for each of these libraries (exact versions are found in `package.json`). For example, prefer `@lingui/react/macro` over `@lingui/react`. Suggest refactoring legacy or deprecated uses.
 
 ## Essential Commands
 
@@ -24,13 +28,15 @@ yarn android            # Run on Android
 yarn ios                # Run on iOS
 
 # Testing & Quality
+# IMPORTANT: Always use these yarn scripts, never call the underlying tools directly
 yarn test               # Run Jest tests
 yarn lint               # Run ESLint
 yarn typecheck          # Run TypeScript type checking
 
 # Internationalization
-yarn intl:extract       # Extract translation strings (you don't typically need to run this manually, we have CI for it)
-yarn intl:compile       # Compile translations for runtime
+# DO NOT run these commands - extraction and compilation are handled by CI
+yarn intl:extract       # Extract translation strings (nightly CI job)
+yarn intl:compile       # Compile translations for runtime (nightly CI job)
 
 # Build
 yarn build-web          # Build web version
@@ -44,6 +50,7 @@ src/
 ├── alf/                    # Design system (ALF) - themes, atoms, tokens
 ├── components/             # Shared UI components (Button, Dialog, Menu, etc.)
 ├── screens/                # Full-page screen components (newer pattern)
+├── features/               # Macro-features that bridge components/screens
 ├── view/
 │   ├── screens/            # Full-page screens (legacy location)
 │   ├── com/                # Reusable view components
@@ -58,11 +65,138 @@ src/
 └── Navigation.tsx          # Main navigation configuration
 ```
 
+### Project Structure in Depth
+
+When building new things, follow these guidelines for where to put code.
+
+#### Components vs Screens vs Features
+
+**Components** are reusable UI elements that are not full screens. Should be
+platform-agnostic when possible. Examples: Button, Dialog, Menu, TextField. Put
+these in `/components` if they are shared across screens.
+
+**Screens** are full-page components that represent a route in the app. They
+often contain multiple components and handle layout for a page. New screens
+should go in `/screens` (not `/view/screens`) to encourage better organization
+and separation from legacy code.
+
+For complex screens that have specific components or data needs that _are not
+shared by other screens_, we encourage subdirectoreis within `/screens/<name>`
+e.g. `/screens/ProfileScreen/ProfileScreen.tsx` and
+`/screens/ProfileScreen/components/`.
+
+**Features** are higher-level modules that may include context, data fetching,
+components, and utilities related to a specific feature e.g.
+`/features/liveNow`. They don't neatly fit into components or screens and often
+span multiple screens. This is an optional pattern for organizing complex
+features.
+
+#### Legacy Directories
+
+For the most part, avoid writing new files into the `/view` directory and
+subdirectories. This is the older pattern for organizing screens and components,
+and it has become a bit disorganized over time. New development should go into
+`/screens`, `/components`, and `/features`.
+
+#### State
+
+The `/state` directory is where we've historically put all our data fetching and
+state management logic. This is perfectly fine, but for new features, consider
+organizing state logic closer to the components that use it, either within a
+feature directory or co-located with a screen. The key is to keep related code
+together and avoid having "god files" with too much unrelated logic.
+
+#### Lib
+
+The `/lib` directory is for utilities and helpers that don't fit into other
+categories. This can include things like API clients, formatting functions,
+constants, and other shared logic.
+
+#### Top Level Directories
+
+Avoid writing new top-level subdirectories within `/src`. We've done this for a
+few things in the past that, but we have stronger patterns now. Examples:
+`/logger` should probably have been written into `/lib`. And `ageAssurance` is
+better classified within `/features`. We will probably migrate these things
+eventually.
+
+### File and Directory Naming Conventions
+
+Typically JS style for variables, functions, etc. We use ProudCamelCase for
+components, and camelCase directories and files.
+
+When organizing new code, consider if it fits into a single file, or if it
+should be broken down into multiple files. For "macro" component cases, or
+things that live in `/features` or `/screens`, we often follow a pattern of
+having an `index.tsx` for the main component, and then co-locating related
+components, hooks, and utilities in the same directory. For example:
+
+```
+src
+├── screens/
+│   ├── ProfileScreen/
+│   │   ├── index.tsx          # Main screen component
+│   │   ├── components/       # Sub-components used only by this screen
+```
+
+Similar patterns can be found in `/features` and `/components`. The idea here is
+to keep related code together and make it easier to navigate.
+
+You should ask yourself: if someone new was looking for the code related to this
+feature or screen, where would they expect to find it? Organizing code in a way
+that matches developer expectations can make the codebase much more
+approachable. Being able to say "Live Now stuff lives in `/features/liveNow`" is
+easier to understand than having it scattered across multiple directories.
+
+No need to go overboard with this. If a component or feature fits into a single
+file, there's no reason to have a `/Component/index.tsx` file when it could just
+be `/Component.tsx`. Use your judgment based on the complexity and amount of
+related code.
+
+#### Platform Specific Files
+
+We have conflicting patterns in the app for this. The preferred approach is to
+group platform-specific files into a directory as much as possible. For example,
+rather than having `Component.tsx`, `Component.web.tsx`, and
+`Component.native.tsx` in the same directory, we prefer to have a `Component/`
+directory with `index.tsx`, `index.web.tsx`, and `index.native.tsx`. This keeps
+related code together and gives us a better visual cue that there are probably
+other files contained within this "macro" feature, whereas `Component.tsx` on
+its own looks more like a single component file.
+
+### Documentation and Tests Within Features
+
+Comment code when necessary to explain the “why” behind something; avoid
+comments that simply describe the code. Avoid Unicode characters in comments,
+e.g., use `-` not `—`.
+
+For larger features or components, it's helpful to include a README.md file
+within the directory that explains the purpose of the feature, how it works, and
+any important implementation details. The `/Component/index.tsx` pattern lends
+itself well to this, since the `index.tsx` can be the main component file, and
+the `README.md` can provide documentation for the whole feature. This is
+optional, but can be a nice way to keep documentation close to the code it
+describes.
+
+Similarly, if there are tests that are specific to a component or feature, it
+can be helpful to include them in the same directory, either as
+`Component.test.tsx` or in a `__tests__/` subdirectory. This keeps everything
+related to the component or feature in one place and makes it easier to find and
+maintain tests.
+
 ## Styling System (ALF)
 
 ALF is the custom design system. It uses Tailwind-inspired naming with underscores instead of hyphens.
 
 ### Basic Usage
+
+Generally, order atoms by:
+
+- Flexbox configuration, e.g., `a.flex_row`
+- Spacing, e.g., `a.px_md`
+- Text styles, e.g., `a.font_bold`
+- Themes, e.g., `t.atoms.text`,
+- Raw styles, e.g., `{backgroundColor: t.palette.primary_500}`
 
 ```tsx
 import {atoms as a, useTheme} from '#/alf'
@@ -72,9 +206,7 @@ function MyComponent() {
 
   return (
     <View style={[a.flex_row, a.gap_md, a.p_lg, t.atoms.bg]}>
-      <Text style={[a.text_md, a.font_bold, t.atoms.text]}>
-        Hello
-      </Text>
+      <Text style={[a.text_md, a.font_bold, t.atoms.text]}>Hello</Text>
     </View>
   )
 }
@@ -82,20 +214,23 @@ function MyComponent() {
 
 ### Key Concepts
 
-**Static Atoms** - Theme-independent styles imported from `atoms`:
+**Static Atoms** – Theme-independent styles imported from `atoms`:
+
 ```tsx
 import {atoms as a} from '#/alf'
 // a.flex_row, a.p_md, a.gap_sm, a.rounded_md, a.text_lg, etc.
 ```
 
-**Theme Atoms** - Theme-dependent colors from `useTheme()`:
+**Theme Atoms** – Theme-dependent colors from `useTheme()`:
+
 ```tsx
 const t = useTheme()
 // t.atoms.bg, t.atoms.text, t.atoms.border_contrast_low, etc.
 // t.palette.primary_500, t.palette.negative_400, etc.
 ```
 
-**Platform Utilities** - For platform-specific styles:
+**Platform Utilities** – For platform-specific styles:
+
 ```tsx
 import {web, native, ios, android, platform} from '#/alf'
 
@@ -107,7 +242,8 @@ const styles = [
 ]
 ```
 
-**Breakpoints** - Responsive design:
+**Breakpoints** – Responsive design:
+
 ```tsx
 import {useBreakpoints} from '#/alf'
 
@@ -127,6 +263,38 @@ if (gtMobile) {
 
 ## Component Patterns
 
+- Prefer fragment shorthand over `Fragment` unless a `key` is needed.
+- Prefer functions over arrow functions for component declarations.
+- Prefer prop destructuring via parameters over a const within the component.
+- Prefer inline types over `Props` types or interfaces.
+- Set reasonable defaults for optional props.
+
+```tsx
+import {Fragment} from 'react'
+import {View} from 'react-native'
+import {Trans, useLingui} from '@lingui/react/macro'
+
+import {Text} from '#/components/Typography'
+
+function MyComponent({foo = []}: {foo?: string[]}) {
+  const {t: l} = useLingui()
+
+  return (
+    <>
+      <View><Text><Trans>Example</Trans><Text></View>
+      <View>
+        {foo.map((foo, index) => (
+          <Fragment key={foo}>
+            <Text>{index}</Text>
+            <Text>{foo}</Text>
+          </Fragment>
+        ))}
+      </View>
+    </>
+  );
+}
+```
+
 ### Dialog Component
 
 Dialogs use a bottom sheet on native and a modal on web. Use `useDialogControl()` hook to manage state.
@@ -145,20 +313,26 @@ function MyFeature() {
 
       <Dialog.Outer control={control}>
         {/* Typically the inner part is in its own component */}
-        <Dialog.Handle />  {/* Native-only drag handle */}
-        <Dialog.ScrollableInner label={_(msg`My Dialog`)}>
-          <Dialog.Header>
-            <Dialog.HeaderText>Title</Dialog.HeaderText>
-          </Dialog.Header>
-
-          <Text>Dialog content here</Text>
-
-          <Button label="Done" onPress={() => control.close()}>
-            <ButtonText>Done</ButtonText>
-          </Button>
-          <Dialog.Close /> {/* Web-only X button in top left */}
-        </Dialog.ScrollableInner>
+        <DialogInner />
       </Dialog.Outer>
+    </>
+  )
+}
+
+function DialogInner() {
+  return (
+    <>
+      <Dialog.Handle /> {/* Native-only drag handle */}
+      <Dialog.ScrollableInner label={l`My Dialog`}>
+        <Dialog.Header>
+          <Dialog.HeaderText>Title</Dialog.HeaderText>
+        </Dialog.Header>
+        <Text>Dialog content here</Text>
+        <Button label="Done" onPress={() => control.close()}>
+          <ButtonText>Done</ButtonText>
+        </Button>
+        <Dialog.Close /> {/* Web-only X button in top left */}
+      </Dialog.ScrollableInner>
     </>
   )
 }
@@ -227,6 +401,7 @@ import {Button, ButtonText, ButtonIcon} from '#/components/Button'
 ```
 
 **Button Props:**
+
 - `color`: `'primary'` | `'secondary'` | `'negative'` | `'primary_subtle'` | `'negative_subtle'` | `'secondary_inverted'`
 - `size`: `'tiny'` | `'small'` | `'large'`
 - `shape`: `'default'` (pill) | `'round'` | `'square'` | `'rectangular'`
@@ -266,41 +441,70 @@ import * as TextField from '#/components/forms/TextField'
 
 ## Internationalization (i18n)
 
-All user-facing strings must be wrapped for translation using Lingui.
+All user-facing strings must be wrapped for translation using Lingui. Include `comment` and/or `context` props when necessary to avoid ambiguity, e.g., “Post” as a noun vs a verb.
+
+Prefer using `t` via `import {useLingui} '@lingui/react/macro'` vs `_` via `import {useLingui} from '@lingui/react'`. Alias `t` to `l` to avoid collisions with `const t = useTheme()`. Refactor existing uses of ``_(msg`foo`)`` to use `` l`foo` ``.
+
+Prefer Unicode punctuation over keyboard punctuation, e.g., `“quote”` over `"quote"`. Prefer en dashes preceded by a non-breaking space over em dashes, e.g., `one – two` over `one—two`.
 
 ```tsx
-import {msg, Trans, plural} from '@lingui/macro'
-import {useLingui} from '@lingui/react'
+import {plural} from '@lingui/core/macro'
+import {Trans, useLingui} from '@lingui/react/macro'
 
 function MyComponent() {
-  const {_} = useLingui()
+  const {t: l} = useLingui()
 
-  // Simple strings - use msg() with _() function
-  const title = _(msg`Settings`)
-  const errorMessage = _(msg`Something went wrong`)
+  // Simple strings - use the l macro
+  const title = l`Settings`
+  const errorMessage = l({
+    message: 'Something went wrong',
+    comment: 'Generic error message for unknown/unhandled errors.',
+    context: 'Toast',
+  })
 
   // Strings with variables
-  const greeting = _(msg`Hello, ${name}!`)
+  const greeting = l`Hello, ${name}!`
 
   // Pluralization
-  const countLabel = _(plural(count, {
+  const countLabel = plural(count, {
     one: '# item',
     other: '# items',
-  }))
+  })
 
   // JSX content - use Trans component
   return (
     <Text>
-      <Trans>Welcome to <Text style={a.font_bold}>Bluesky</Text></Trans>
+      <Trans>
+        Welcome to <Text style={a.font_bold}>Bluesky</Text>, {name}!
+      </Trans>
     </Text>
   )
 }
 ```
 
+Prefer `i18n.date` for date and time formatting. This ensures formatting is re-applied when the language changes at runtime. Refactor existing uses of `Intl.DateTimeFormat` to use `i18n.date`.
+
+```tsx
+import {useLingui} from '@lingui/react/macro'
+
+function MyComponent() {
+  const {i18n} = useLingui()
+
+  const createdAt = new Date()
+
+  return i18n.date(createdAt, {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+  })
+}
+```
+
 **Commands:**
+
 ```bash
+# DO NOT run these commands - extraction and compilation are handled by a nightly CI job
 yarn intl:extract    # Extract new strings to locale files
-yarn intl:compile    # Compile for runtime (required after changes)
+yarn intl:compile    # Compile translations for runtime
 ```
 
 ## State Management
@@ -311,16 +515,30 @@ yarn intl:compile    # Compile for runtime (required after changes)
 // src/state/queries/profile.ts
 import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query'
 
-// Query key pattern
-const RQKEY_ROOT = 'profile'
-export const RQKEY = (did: string) => [RQKEY_ROOT, did]
+import {createQueryKey} from '#/state/queries/util'
 
-// Query hook
+/*
+ * Query key name should match the query hook name for consistency
+ */
+const profileQueryKeyRoot = 'profile'
+
+/*
+ * Use object params and createQueryKey helper for better readability and to
+ * avoid bugs with parameter order or types.
+ */
+export const createProfileQueryKey = (args: {did: string}) =>
+  createQueryKey(profileQueryKeyRoot, args)
+
+/*
+ * Query hook should be named use[Name]Query, where [Name] describes the data
+ * being fetched. This is not a strict requirement, but it's a helpful
+ * convention for discoverability
+ */
 export function useProfileQuery({did}: {did: string}) {
   const agent = useAgent()
 
   return useQuery({
-    queryKey: RQKEY(did),
+    queryKey: createProfileQueryKey({did}),
     queryFn: async () => {
       const res = await agent.getProfile({actor: did})
       return res.data
@@ -330,18 +548,24 @@ export function useProfileQuery({did}: {did: string}) {
   })
 }
 
-// Mutation hook
-export function useUpdateProfile() {
+/*
+ * Mutation hook should match the name of the query hook, but with "Mutation"
+ * suffix. This is not a strict requirement, but it's a helpful convention for
+ * discoverability and consistency.
+ */
+export function useProfileMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (data) => {
+    mutationFn: async data => {
       // Update logic
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({queryKey: RQKEY(variables.did)})
+      queryClient.invalidateQueries({
+        queryKey: createProfileQueryKey({did: variables.did}),
+      })
     },
-    onError: (error) => {
+    onError: error => {
       if (isNetworkError(error)) {
         // don't log, but inform user
       } else if (error instanceof AppBskyExampleProcedure.ExampleError) {
@@ -350,18 +574,40 @@ export function useUpdateProfile() {
         // Log unexpected errors to Sentry
         logger.error('Error updating profile', {safeMessage: error})
       }
-    }
+    },
   })
+}
+
+/*
+ * If cache mutation is needed, include specific interfaces for the specific
+ * mutations you require adjacent to the source queries. Naming should be
+ * descriptive of the mutation's purpose, e.g. use[Name]CacheMutation. This is
+ * not a strict requirement, but it's a helpful convention for discoverability
+ * and consistency.
+ */
+export function useProfileCacheMutation() {
+  const queryClient = useQueryClient()
+
+  return (data: Partial<Profile>) => {
+    queryClient.setQueryData(
+      createProfileQueryKey({did: data.did}),
+      oldData => {
+        if (!oldData) return oldData
+        return {...oldData, ...data}
+      },
+    )
+  }
 }
 ```
 
 **Stale Time Constants** (from `src/state/queries/index.ts`):
+
 ```tsx
-STALE.SECONDS.FIFTEEN  // 15 seconds
-STALE.MINUTES.ONE      // 1 minute
-STALE.MINUTES.FIVE     // 5 minutes
-STALE.HOURS.ONE        // 1 hour
-STALE.INFINITY         // Never stale
+STALE.SECONDS.FIFTEEN // 15 seconds
+STALE.MINUTES.ONE // 1 minute
+STALE.MINUTES.FIVE // 5 minutes
+STALE.HOURS.ONE // 1 hour
+STALE.INFINITY // Never stale
 ```
 
 **Paginated APIs:** Many atproto APIs return paginated results with a `cursor`. Use `useInfiniteQuery` for these:
@@ -371,7 +617,7 @@ export function useDraftsQuery() {
   const agent = useAgent()
 
   return useInfiniteQuery({
-    queryKey: ['drafts'],
+    queryKey: createQueryKey('drafts'),
     queryFn: async ({pageParam}) => {
       const res = await agent.app.bsky.draft.getDrafts({cursor: pageParam})
       return res.data
@@ -384,6 +630,19 @@ export function useDraftsQuery() {
 
 To get all items from pages: `data?.pages.flatMap(page => page.items) ?? []`
 
+**Persisted Queries**
+
+To persist query data across app restarts, `createQueryKey` supports a third
+parameter called `options`, which has a `persistedVersion` property. When this
+property is set to a number, the query will be persisted.
+
+When this property is updated (e.g. incremented), the persisted data will be cleared and replaced with the new data from the query function. This is useful for cases where the shape of the data has changed and old persisted data would no longer be valid.
+
+```tsx
+export const createProfileQueryKey = (args: {did: string}) =>
+  createQueryKey(profileQueryKeyRoot, args, {persistedVersion: 1})
+```
+
 ### Preferences (React Context)
 
 ```tsx
@@ -394,12 +653,7 @@ function SettingsScreen() {
   const autoplayDisabled = useAutoplayDisabled()
   const setAutoplayDisabled = useSetAutoplayDisabled()
 
-  return (
-    <Toggle
-      value={autoplayDisabled}
-      onValueChange={setAutoplayDisabled}
-    />
-  )
+  return <Toggle value={autoplayDisabled} onValueChange={setAutoplayDisabled} />
 }
 ```
 
@@ -433,13 +687,9 @@ import {type CommonNavigatorParams} from '#/lib/routes/types'
 type Props = NativeStackScreenProps<CommonNavigatorParams, 'Profile'>
 
 export function ProfileScreen({route, navigation}: Props) {
-  const {name} = route.params  // Type-safe params
+  const {name} = route.params // Type-safe params
 
-  return (
-    <Layout.Screen>
-      {/* Screen content */}
-    </Layout.Screen>
-  )
+  return <Layout.Screen>{/* Screen content */}</Layout.Screen>
 }
 
 // Programmatic navigation
@@ -466,8 +716,9 @@ Component.android.tsx  # Android-only
 ```
 
 Example from Dialog:
-- `src/components/Dialog/index.tsx` - Native (uses BottomSheet)
-- `src/components/Dialog/index.web.tsx` - Web (uses modal with Radix primitives)
+
+- `src/components/Dialog/index.tsx` – Native (uses BottomSheet)
+- `src/components/Dialog/index.web.tsx` – Web (uses modal with Radix primitives)
 
 **Important:** The bundler automatically resolves platform-specific files. Just import normally:
 
@@ -482,6 +733,7 @@ const storage = IS_NATIVE
 ```
 
 Platform detection (for runtime logic, not imports):
+
 ```tsx
 import {IS_WEB, IS_NATIVE, IS_IOS, IS_ANDROID} from '#/env'
 
@@ -516,13 +768,13 @@ Common pitfalls to avoid in this codebase:
 // WRONG - causes bugs with state updates, navigation, opening other dialogs
 const onConfirm = () => {
   control.close()
-  navigation.navigate('Home')  // May race with dialog animation
+  navigation.navigate('Home') // May race with dialog animation
 }
 
 // WRONG - same problem
 const onConfirm = () => {
   control.close()
-  otherDialogControl.open()  // Will likely fail or cause visual glitches
+  otherDialogControl.open() // Will likely fail or cause visual glitches
 }
 
 // CORRECT - action runs after dialog fully closes
@@ -549,12 +801,13 @@ const onConfirm = () => {
 ```
 
 This applies to:
+
 - Navigation (`navigation.navigate()`, `navigation.push()`)
 - Opening other dialogs or menus
 - State updates that affect UI (`setState`, `queryClient.invalidateQueries`)
 - Callbacks passed from parent components
 
-The Menu component on iOS specifically uses this pattern - see `src/components/Menu/index.tsx:151`.
+The Menu component on iOS specifically uses this pattern – see `src/components/Menu/index.tsx:151`.
 
 ### Controlled vs Uncontrolled Inputs
 
@@ -577,10 +830,11 @@ Prefer `defaultValue` over `value` for TextInput on the old architecture:
 ### Platform-Specific Behavior
 
 Some components behave differently across platforms:
-- `Dialog.Handle` - Only renders on native (drag handle for bottom sheet)
-- `Dialog.Close` - Only renders on web (X button)
-- `Menu.Divider` - Only renders on web
-- `Menu.ContainerItem` - Only works on native
+
+- `Dialog.Handle` – Only renders on native (drag handle for bottom sheet)
+- `Dialog.Close` – Only renders on web (X button)
+- `Menu.Divider` – Only renders on web
+- `Menu.ContainerItem` – Only works on native
 
 Always test on multiple platforms when using these components.
 
@@ -601,6 +855,7 @@ const handlePress = () => {
 ```
 
 Only use `useMemo`/`useCallback` when you have a specific reason, such as:
+
 - The value is immediately used in an effect's dependency array
 - You're passing a callback to a non-React library that needs referential stability
 
@@ -608,7 +863,7 @@ Only use `useMemo`/`useCallback` when you have a specific reason, such as:
 
 1. **Accessibility**: Always provide `label` prop for interactive elements, use `accessibilityHint` where helpful
 
-2. **Translations**: Wrap ALL user-facing strings with `msg()` or `<Trans>`
+2. **Translations**: Wrap ALL user-facing strings with ` `l` `` or `<Trans>`
 
 3. **Styling**: Combine static atoms with theme atoms, use platform utilities for platform-specific styles
 
@@ -622,14 +877,14 @@ Only use `useMemo`/`useCallback` when you have a specific reason, such as:
 
 ## Key Files Reference
 
-| Purpose | Location |
-|---------|----------|
-| Theme definitions | `src/alf/themes.ts` |
-| Design tokens | `src/alf/tokens.ts` |
-| Static atoms | `src/alf/atoms.ts` (extends `@bsky.app/alf`) |
-| Navigation config | `src/Navigation.tsx` |
-| Route definitions | `src/routes.ts` |
-| Route types | `src/lib/routes/types.ts` |
-| Query hooks | `src/state/queries/*.ts` |
-| Session state | `src/state/session/index.tsx` |
-| i18n setup | `src/locale/i18n.ts` |
+| Purpose           | Location                                     |
+| ----------------- | -------------------------------------------- |
+| Theme definitions | `src/alf/themes.ts`                          |
+| Design tokens     | `src/alf/tokens.ts`                          |
+| Static atoms      | `src/alf/atoms.ts` (extends `@bsky.app/alf`) |
+| Navigation config | `src/Navigation.tsx`                         |
+| Route definitions | `src/routes.ts`                              |
+| Route types       | `src/lib/routes/types.ts`                    |
+| Query hooks       | `src/state/queries/*.ts`                     |
+| Session state     | `src/state/session/index.tsx`                |
+| i18n setup        | `src/locale/i18n.ts`                         |

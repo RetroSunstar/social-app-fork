@@ -1,15 +1,14 @@
-import {useCallback, useLayoutEffect, useState} from 'react'
+import {useState} from 'react'
 import {LayoutAnimationConfig} from 'react-native-reanimated'
-import {msg} from '@lingui/macro'
+import {msg} from '@lingui/core/macro'
 import {useLingui} from '@lingui/react'
 import {usePreventRemove} from '@react-navigation/native'
 
-import {useEnableKeyboardControllerScreen} from '#/lib/hooks/useEnableKeyboardController'
 import {
   type AllNavigatorParams,
   type NativeStackScreenProps,
 } from '#/lib/routes/types'
-import {useSetMinimalShellMode} from '#/state/shell'
+import {useEnableMinimalShellMode} from '#/state/shell'
 import {ErrorScreen} from '#/view/com/util/error/ErrorScreen'
 import {FindContactsFlow} from '#/components/contacts/FindContactsFlow'
 import {useFindContactsFlowState} from '#/components/contacts/state'
@@ -37,14 +36,7 @@ export function FindContactsFlowScreen({navigation}: Props) {
     })
   })
 
-  useEnableKeyboardControllerScreen(true)
-
-  const setMinimalShellMode = useSetMinimalShellMode()
-  const effect = useCallback(() => {
-    setMinimalShellMode(true)
-    return () => setMinimalShellMode(false)
-  }, [setMinimalShellMode])
-  useLayoutEffect(effect)
+  useEnableMinimalShellMode()
 
   return (
     <Layout.Screen>
